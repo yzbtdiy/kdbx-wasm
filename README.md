@@ -1,189 +1,273 @@
 # kdbx-wasm
 
-一个使用 Rust 和 WebAssembly 构建的高性能 KDBX 密码数据库解析器，支持 KDBX 4 格式。
+A high-performance KDBX 4 password database parser built with Rust and WebAssembly. Works in both **browsers** and **Node.js**.
 
-## 功能特性
+[![npm version](https://img.shields.io/npm/v/kdbx-wasm.svg)](https://www.npmjs.com/package/kdbx-wasm)
+[![license](https://img.shields.io/npm/l/kdbx-wasm.svg)](https://github.com/yzbtdiy/kdbx-wasm/blob/master/LICENSE)
 
-- **完整的 KDBX 4 支持**：解析、修改和生成 KDBX 4 格式文件
-- **多种加密算法**：AES-256-CBC 和 ChaCha20
-- **密钥派生函数**：Argon2d、Argon2id 和 AES-KDF
-- **WebAssembly 驱动**：基于 Rust 实现，通过 WASM 在浏览器中运行
-- **TypeScript 支持**：完整的类型定义
-- **安全优先**：安全内存容器，敏感数据自动清零
+## Features
 
-## 快速开始
+- **KDBX 4 format** — parse, modify, and generate `.kdbx` files
+- **Encryption** — AES-256-CBC and ChaCha20
+- **Key derivation** — Argon2d, Argon2id, and AES-KDF
+- **WebAssembly** — Rust-powered, runs in browsers and Node.js
+- **TypeScript** — full type definitions included
+- **Secure** — sensitive data auto-zeroed from memory
 
-### 浏览器中使用
+## Installation
+
+```bash
+npm install kdbx-wasm
+```
+
+## Usage — Browser
+
+> WASM must be initialized before use. Call `init()` (from `kdbx_wasm.js`) once at startup.
 
 ```html
 <!DOCTYPE html>
 <html>
-<head>
+<body>
+  <input type="file" id="file" accept=".kdbx" />
+  <input type="password" id="password" placeholder="Master password" />
+  <button id="open">Open</button>
+  <pre id="output"></pre>
+
   <script type="module">
-    import { KdbxDatabase, isKdbxFile } from 'kdbx-wasm';
-    
-    // 加载 KDBX 文件
-    const response = await fetch('passwords.kdbx');
-    const fileData = new Uint8Array(await response.arrayBuffer());
-    
-    // 检查是否为有效的 KDBX 文件
-    if (isKdbxFile(fileData)) {
-      console.log('有效的 KDBX 文件!');
-    }
-    
-    // 打开数据库
-    const db = new KdbxDatabase(fileData, 'master-password');
-    
-    // 获取所有条目
-    const entries = db.getEntries();
-    entries.forEach(entry => {
-      console.log(`标题: ${entry.title}`);
-      console.log(`用户名: ${entry.username}`);
-      console.log(`密码: ${entry.password}`);
+    import init, { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-wasm/kdbx_wasm.js';
+
+    // Initialize WASM module
+    await init();
+
+    document.getElementById('open').addEventListener('click', async () => {
+      const file = document.getElementById('file').files[0];
+      if (!file) return;
+
+      const data = new Uint8Array(await file.arrayBuffer());
+      const password = document.getElementById('password').value;
+
+      // Quick check without decryption
+      if (!isKdbxFile(data)) {
+        document.getElementById('output').textContent = 'Not a valid KDBX file';
+        return;
+      }
+
+      // Inspect file metadata (no password required)
+      const info = getFileInfo(data);
+      console.log('Encryption:', info.encryptionAlgorithm); // 'AES-256' | 'ChaCha20'
+      console.log('KDF:', info.kdfAlgorithm);               // 'Argon2d' | 'Argon2id' | 'AES-KDF'
+
+      // Open database
+      const db = new KdbxDatabase(data, password);
+
+      // Metadata & header
+      console.log('Database name:', db.metadata.databaseName);
+      console.log('Entries:', db.headerInfo.entryCount);
+
+      // List all groups
+      const groups = db.getGroups();
+      groups.forEach(g => console.log(`Group: ${g.name} (${g.uuid})`));
+
+      // List all entries
+      const entries = db.getEntries();
+      entries.forEach(entry => {
+        console.log(`${entry.title} — ${entry.username}`);
+      });
+
+      // Search
+      const results = db.searchEntries('github');
+      console.log('Search results:', results.length);
+
+      // Get entries in a specific group
+      const rootEntries = db.getEntriesByGroup(db.rootGroupUuid);
+
+      // Export back to .kdbx bytes
+      const exported = db.toBytes(password);
+      // Download as file:
+      // const blob = new Blob([exported], { type: 'application/octet-stream' });
+      // window.open(URL.createObjectURL(blob));
+
+      // Display results
+      document.getElementById('output').textContent = JSON.stringify(entries, null, 2);
     });
   </script>
-</head>
-<body>
-  <h1>KDBX Parser Demo</h1>
 </body>
 </html>
 ```
 
-### API 参考
+## Usage — Node.js
 
-#### `KdbxDatabase` 类
+> Node.js >= 16 required. Uses the `node` target WASM build.
 
-**构造函数**
-```javascript
+```js
+import { readFileSync, writeFileSync } from 'node:fs';
+import { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-wasm';
+
+// Load KDBX file
+const fileData = new Uint8Array(readFileSync('passwords.kdbx'));
+
+// ── Quick check ──────────────────────────────────────
+console.log('Valid KDBX:', isKdbxFile(fileData)); // true
+
+// ── File info (no password needed) ───────────────────
+const info = getFileInfo(fileData);
+console.log('Version:', info.version);             // '4.0'
+console.log('Encryption:', info.encryptionAlgorithm); // 'AES-256'
+console.log('KDF:', info.kdfAlgorithm);            // 'Argon2id'
+console.log('Compression:', info.compression);     // 'Gzip'
+
+// ── Open database ────────────────────────────────────
+const db = new KdbxDatabase(fileData, 'master-password');
+//   with key file:
+//   const keyFile = new Uint8Array(readFileSync('secret.key'));
+//   const db = new KdbxDatabase(fileData, 'password', keyFile);
+
+// ── Metadata ─────────────────────────────────────────
+console.log('Database:', db.metadata.databaseName);
+console.log('Entries:', db.headerInfo.entryCount);
+console.log('Groups:', db.headerInfo.groupCount);
+
+// ── List groups ──────────────────────────────────────
+const groups = db.getGroups();
+for (const group of groups) {
+  console.log(`📁 ${group.name} (${group.entries.length} entries)`);
+}
+
+// ── List all entries ─────────────────────────────────
+const entries = db.getEntries();
+for (const entry of entries) {
+  console.log(`  ${entry.title}`);
+  console.log(`    User: ${entry.username}`);
+  console.log(`    URL:  ${entry.url ?? '-'}`);
+  // entry.password is available but omitted here for safety
+}
+
+// ── Get single entry ─────────────────────────────────
+const entry = db.getEntry(entries[0].uuid);
+console.log('Password:', entry.password);
+
+// ── Search ───────────────────────────────────────────
+const results = db.searchEntries('google');
+console.log(`Found ${results.length} entries matching "google"`);
+
+// ── Group entries ────────────────────────────────────
+const rootEntries = db.getEntriesByGroup(db.rootGroupUuid);
+console.log(`Root group has ${rootEntries.length} entries`);
+
+// ── Export ────────────────────────────────────────────
+const exported = db.toBytes('new-password');
+writeFileSync('exported.kdbx', exported);
+console.log('Saved exported.kdbx');
+```
+
+## API Reference
+
+### `KdbxDatabase`
+
+```typescript
 new KdbxDatabase(data: Uint8Array, password?: string, keyFile?: Uint8Array)
 ```
 
-**属性**
-- `metadata`: 数据库元数据（名称、描述等）
-- `headerInfo`: 头部信息（加密算法、KDF、条目数等）
-- `rootGroupUuid`: 根组 UUID
+| Property | Type | Description |
+|----------|------|-------------|
+| `metadata` | `KdbxMetadata` | Database name, description, default username |
+| `headerInfo` | `KdbxHeaderInfo` | Encryption algorithm, KDF, entry/group counts |
+| `rootGroupUuid` | `string` | UUID of the root group |
 
-**方法**
-- `getEntries()`: 获取所有条目
-- `getEntry(uuid: string)`: 根据 UUID 获取条目
-- `getGroups()`: 获取所有组
-- `getGroup(uuid: string)`: 根据 UUID 获取组
-- `getEntriesByGroup(groupUuid: string)`: 获取指定组的所有条目
-- `searchEntries(query: string)`: 搜索条目
-- `toBytes(password?: string, keyFile?: Uint8Array)`: 导出为 KDBX 字节
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `getEntries()` | `KdbxEntry[]` | All entries |
+| `getEntry(uuid)` | `KdbxEntry` | Single entry by UUID |
+| `getGroups()` | `KdbxGroup[]` | All groups |
+| `getGroup(uuid)` | `KdbxGroup` | Single group by UUID |
+| `getEntriesByGroup(groupUuid)` | `KdbxEntry[]` | Entries in a group |
+| `searchEntries(query)` | `KdbxEntry[]` | Search by keyword (title, username, URL, notes) |
+| `toBytes(password?, keyFile?)` | `Uint8Array` | Export as KDBX bytes |
 
-#### 工具函数
+### Utility Functions
 
-- `isKdbxFile(data: Uint8Array): boolean`: 检查数据是否为有效的 KDBX 文件
-- `getFileInfo(data: Uint8Array): object`: 无需解密获取文件信息
-
-## 项目结构
-
-```
-.
-├── Cargo.toml          # Rust 项目配置
-├── src/
-│   ├── lib.rs          # 库入口
-│   ├── wasm.rs         # WASM 绑定
-│   ├── core/           # 核心解析逻辑
-│   │   ├── parser/     # KDBX 解析器
-│   │   ├── crypto/     # 加密实现
-│   │   └── types/      # 数据类型
-│   ├── api/            # REST API (非 WASM)
-│   └── service/        # 业务服务 (非 WASM)
-├── js/                 # JavaScript 包装
-│   ├── index.js        # 主入口
-│   ├── index.d.ts      # TypeScript 类型定义
-│   ├── kdbx_rs.js      # WASM 生成的 JS 绑定
-│   ├── kdbx_rs_bg.wasm # WASM 模块
-│   ├── example.html    # 浏览器示例
-│   └── README.md       # JS 库文档
-└── build-wasm.bat      # 构建脚本
+```typescript
+isKdbxFile(data: Uint8Array): boolean     // Check KDBX signature
+getFileInfo(data: Uint8Array): KdbxFileInfo // Header info without decryption
 ```
 
-## 构建
+### Types
 
-### 前提条件
+```typescript
+interface KdbxEntry {
+  uuid: string;
+  groupId: string;
+  title: string;
+  username?: string;
+  password: string;
+  url?: string;
+  notes?: string;
+  iconId: number;
+  createdAt: string;
+  updatedAt: string;
+  accessedAt: string;
+  expiresAt?: string;
+  tags: string[];
+  customFields: Record<string, string>;
+}
 
-- Rust 1.94.0 或更高版本
-- wasm-bindgen-cli
+interface KdbxGroup {
+  uuid: string;
+  name: string;
+  iconId: number;
+  parentId?: string;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
+  childGroups: string[];
+  entries: string[];
+}
 
-### 构建 WASM 模块
+interface KdbxMetadata {
+  databaseName?: string;
+  databaseDescription?: string;
+  defaultUsername?: string;
+  maintenanceHistoryDays: number;
+  color?: string;
+}
+
+interface KdbxHeaderInfo {
+  version: string;
+  encryptionAlgorithm: 'AES-256' | 'ChaCha20';
+  kdfAlgorithm: 'Argon2d' | 'Argon2id' | 'AES-KDF';
+  kdfParams: { memory?: number; iterations?: number; parallelism?: number; rounds?: number };
+  compression: 'None' | 'Gzip';
+  entryCount: number;
+  groupCount: number;
+}
+```
+
+## Building from Source
 
 ```bash
-# 安装 wasm-bindgen-cli
+# Prerequisites: Rust 1.94+, wasm-bindgen-cli
 cargo install wasm-bindgen-cli
 
-# 运行构建脚本
+# Build WASM module
 .\build-wasm.bat
-```
 
-或者手动构建：
-
-```bash
-# 构建 WASM 模块
+# Or manually:
 cargo build --lib --target wasm32-unknown-unknown --release
-
-# 生成 JS 绑定
-wasm-bindgen target\wasm32-unknown-unknown\release\kdbx_rs.wasm \
-  --out-dir js \
-  --target web \
-  --no-typescript
+wasm-bindgen target/wasm32-unknown-unknown/release/kdbx_wasm.wasm \
+  --out-dir js --target web --no-typescript
 ```
 
-## 运行示例
+## Browser Compatibility
 
-```bash
-# 启动本地服务器
-cd js
-python -m http.server 8080
+Chrome 57+ · Firefox 52+ · Safari 11+ · Edge 16+
 
-# 打开浏览器访问 http://localhost:8080/example.html
-```
+## Security
 
-## 服务器模式（非 WASM）
+- Master password derives the encryption key via Argon2/AES-KDF
+- Key file can be used alongside or instead of a password
+- All cryptographic operations execute inside WebAssembly
+- Sensitive data is cleared from memory when possible
 
-除了 WASM 库，本项目还包含一个完整的 REST API 服务器：
+## License
 
-```bash
-# 运行服务器
-cargo run --release
-
-# 服务器将在 http://localhost:3000 启动
-```
-
-查看 [API 文档](docs/API.md) 了解更多详情。
-
-## 浏览器兼容性
-
-- Chrome 57+
-- Firefox 52+
-- Safari 11+
-- Edge 16+
-
-## 安全注意事项
-
-- 主密码用于派生加密密钥
-- 密钥文件可以与密码一起使用或单独使用
-- 所有加密操作都在 WebAssembly 中执行
-- 敏感数据在可能的情况下从内存中清除
-
-## 技术栈
-
-| 组件 | 技术 | 版本 |
-|------|------|------|
-| 编程语言 | Rust | 1.94.0 |
-| WASM 绑定 | wasm-bindgen | 0.2.100 |
-| 加密 | RustCrypto | 最新版 |
-| XML 解析 | roxmltree | 0.20.0 |
-| 压缩 | flate2 | 1.1.9 |
-
-## 许可证
-
-MIT License
-
-## 致谢
-
-- [KeePass](https://keepass.info/) - KDBX 文件格式规范
-- [RustCrypto](https://github.com/RustCrypto) - 纯 Rust 加密实现
-- [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen) - Rust 与 WebAssembly 的桥梁
+MIT

@@ -1,14 +1,18 @@
 # kdbx-wasm
 
-A WebAssembly-based KDBX password database parser for JavaScript/TypeScript.
+A high-performance KDBX 4 password database parser built with Rust and WebAssembly. Works in both **browsers** and **Node.js**.
+
+[![npm version](https://img.shields.io/npm/v/kdbx-wasm.svg)](https://www.npmjs.com/package/kdbx-wasm)
+[![license](https://img.shields.io/npm/l/kdbx-wasm.svg)](https://github.com/yzbtdiy/kdbx-wasm/blob/master/LICENSE)
 
 ## Features
 
-- **Pure Rust Implementation**: Zero-dependency KDBX 4 parser written in Rust
-- **WebAssembly Powered**: Fast and secure parsing in the browser
-- **Full KDBX 4 Support**: Supports AES-256 and ChaCha20 encryption, Argon2d/Argon2id/AES-KDF key derivation
-- **TypeScript Support**: Full type definitions included
-- **Secure**: Sensitive data handling with secure memory containers
+- **KDBX 4 format** — parse, modify, and generate `.kdbx` files
+- **Encryption** — AES-256-CBC and ChaCha20
+- **Key derivation** — Argon2d, Argon2id, and AES-KDF
+- **WebAssembly** — Rust-powered, runs in browsers and Node.js
+- **TypeScript** — full type definitions included
+- **Secure** — sensitive data auto-zeroed from memory
 
 ## Installation
 
@@ -16,122 +20,252 @@ A WebAssembly-based KDBX password database parser for JavaScript/TypeScript.
 npm install kdbx-wasm
 ```
 
-Or use directly in the browser:
+## Usage — Browser
+
+> WASM must be initialized before use. Call `init()` (from `kdbx_wasm.js`) once at startup.
 
 ```html
-<script type="module">
-  import { KdbxDatabase, isKdbxFile } from './index.js';
-</script>
+<!DOCTYPE html>
+<html>
+<body>
+  <input type="file" id="file" accept=".kdbx" />
+  <input type="password" id="password" placeholder="Master password" />
+  <button id="open">Open</button>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import init, { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-wasm/kdbx_wasm.js';
+
+    // Initialize WASM module
+    await init();
+
+    document.getElementById('open').addEventListener('click', async () => {
+      const file = document.getElementById('file').files[0];
+      if (!file) return;
+
+      const data = new Uint8Array(await file.arrayBuffer());
+      const password = document.getElementById('password').value;
+
+      // Quick check without decryption
+      if (!isKdbxFile(data)) {
+        document.getElementById('output').textContent = 'Not a valid KDBX file';
+        return;
+      }
+
+      // Inspect file metadata (no password required)
+      const info = getFileInfo(data);
+      console.log('Encryption:', info.encryptionAlgorithm); // 'AES-256' | 'ChaCha20'
+      console.log('KDF:', info.kdfAlgorithm);               // 'Argon2d' | 'Argon2id' | 'AES-KDF'
+
+      // Open database
+      const db = new KdbxDatabase(data, password);
+
+      // Metadata & header
+      console.log('Database name:', db.metadata.databaseName);
+      console.log('Entries:', db.headerInfo.entryCount);
+
+      // List all groups
+      const groups = db.getGroups();
+      groups.forEach(g => console.log(`Group: ${g.name} (${g.uuid})`));
+
+      // List all entries
+      const entries = db.getEntries();
+      entries.forEach(entry => {
+        console.log(`${entry.title} — ${entry.username}`);
+      });
+
+      // Search
+      const results = db.searchEntries('github');
+      console.log('Search results:', results.length);
+
+      // Get entries in a specific group
+      const rootEntries = db.getEntriesByGroup(db.rootGroupUuid);
+
+      // Export back to .kdbx bytes
+      const exported = db.toBytes(password);
+      // Download as file:
+      // const blob = new Blob([exported], { type: 'application/octet-stream' });
+      // window.open(URL.createObjectURL(blob));
+
+      // Display results
+      document.getElementById('output').textContent = JSON.stringify(entries, null, 2);
+    });
+  </script>
+</body>
+</html>
 ```
 
-## Usage
+## Usage — Node.js
 
-### Basic Example
+> Node.js >= 16 required. Uses the `node` target WASM build.
 
-```javascript
-import { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-rs';
+```js
+import { readFileSync, writeFileSync } from 'node:fs';
+import { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-wasm';
 
-// Load a KDBX file
-const response = await fetch('passwords.kdbx');
-const fileData = new Uint8Array(await response.arrayBuffer());
+// Load KDBX file
+const fileData = new Uint8Array(readFileSync('passwords.kdbx'));
 
-// Check if it's a valid KDBX file
-if (isKdbxFile(fileData)) {
-  console.log('Valid KDBX file!');
+// ── Quick check ──────────────────────────────────────
+console.log('Valid KDBX:', isKdbxFile(fileData)); // true
+
+// ── File info (no password needed) ───────────────────
+const info = getFileInfo(fileData);
+console.log('Version:', info.version);             // '4.0'
+console.log('Encryption:', info.encryptionAlgorithm); // 'AES-256'
+console.log('KDF:', info.kdfAlgorithm);            // 'Argon2id'
+console.log('Compression:', info.compression);     // 'Gzip'
+
+// ── Open database ────────────────────────────────────
+const db = new KdbxDatabase(fileData, 'master-password');
+//   with key file:
+//   const keyFile = new Uint8Array(readFileSync('secret.key'));
+//   const db = new KdbxDatabase(fileData, 'password', keyFile);
+
+// ── Metadata ─────────────────────────────────────────
+console.log('Database:', db.metadata.databaseName);
+console.log('Entries:', db.headerInfo.entryCount);
+console.log('Groups:', db.headerInfo.groupCount);
+
+// ── List groups ──────────────────────────────────────
+const groups = db.getGroups();
+for (const group of groups) {
+  console.log(`📁 ${group.name} (${group.entries.length} entries)`);
 }
 
-// Get file info without decrypting
-const info = getFileInfo(fileData);
-console.log(`Encryption: ${info.encryptionAlgorithm}`);
-console.log(`KDF: ${info.kdfAlgorithm}`);
-
-// Open the database
-const db = new KdbxDatabase(fileData, 'my-master-password');
-
-// Get database info
-console.log('Metadata:', db.metadata);
-console.log('Header Info:', db.headerInfo);
-
-// Get all entries
+// ── List all entries ─────────────────────────────────
 const entries = db.getEntries();
-entries.forEach(entry => {
-  console.log(`Title: ${entry.title}`);
-  console.log(`Username: ${entry.username}`);
-  console.log(`Password: ${entry.password}`);
-  console.log(`URL: ${entry.url}`);
-});
+for (const entry of entries) {
+  console.log(`  ${entry.title}`);
+  console.log(`    User: ${entry.username}`);
+  console.log(`    URL:  ${entry.url ?? '-'}`);
+  // entry.password is available but omitted here for safety
+}
 
-// Search entries
+// ── Get single entry ─────────────────────────────────
+const entry = db.getEntry(entries[0].uuid);
+console.log('Password:', entry.password);
+
+// ── Search ───────────────────────────────────────────
 const results = db.searchEntries('google');
+console.log(`Found ${results.length} entries matching "google"`);
 
-// Get entries in a specific group
-const groupEntries = db.getEntriesByGroup(db.rootGroupUuid);
+// ── Group entries ────────────────────────────────────
+const rootEntries = db.getEntriesByGroup(db.rootGroupUuid);
+console.log(`Root group has ${rootEntries.length} entries`);
 
-// Export to bytes
-const exported = db.toBytes('my-master-password');
+// ── Export ────────────────────────────────────────────
+const exported = db.toBytes('new-password');
+writeFileSync('exported.kdbx', exported);
+console.log('Saved exported.kdbx');
 ```
 
-### API Reference
+## API Reference
 
-#### `KdbxDatabase`
+### `KdbxDatabase`
 
-Main class for working with KDBX databases.
-
-**Constructor**
 ```typescript
 new KdbxDatabase(data: Uint8Array, password?: string, keyFile?: Uint8Array)
 ```
 
-**Properties**
-- `metadata`: Database metadata (name, description, etc.)
-- `headerInfo`: Header information (encryption, KDF, counts)
-- `rootGroupUuid`: UUID of the root group
+| Property | Type | Description |
+|----------|------|-------------|
+| `metadata` | `KdbxMetadata` | Database name, description, default username |
+| `headerInfo` | `KdbxHeaderInfo` | Encryption algorithm, KDF, entry/group counts |
+| `rootGroupUuid` | `string` | UUID of the root group |
 
-**Methods**
-- `getEntries()`: Get all entries as an array
-- `getEntry(uuid: string)`: Get a specific entry by UUID
-- `getGroups()`: Get all groups as an array
-- `getGroup(uuid: string)`: Get a specific group by UUID
-- `getEntriesByGroup(groupUuid: string)`: Get entries in a specific group
-- `searchEntries(query: string)`: Search entries by keyword
-- `toBytes(password?: string, keyFile?: Uint8Array)`: Export the database
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `getEntries()` | `KdbxEntry[]` | All entries |
+| `getEntry(uuid)` | `KdbxEntry` | Single entry by UUID |
+| `getGroups()` | `KdbxGroup[]` | All groups |
+| `getGroup(uuid)` | `KdbxGroup` | Single group by UUID |
+| `getEntriesByGroup(groupUuid)` | `KdbxEntry[]` | Entries in a group |
+| `searchEntries(query)` | `KdbxEntry[]` | Search by keyword (title, username, URL, notes) |
+| `toBytes(password?, keyFile?)` | `Uint8Array` | Export as KDBX bytes |
 
-#### Utility Functions
+### Utility Functions
 
-- `isKdbxFile(data: Uint8Array): boolean`: Check if data is a valid KDBX file
-- `getFileInfo(data: Uint8Array): KdbxFileInfo`: Get file info without decrypting
+```typescript
+isKdbxFile(data: Uint8Array): boolean     // Check KDBX signature
+getFileInfo(data: Uint8Array): KdbxFileInfo // Header info without decryption
+```
+
+### Types
+
+```typescript
+interface KdbxEntry {
+  uuid: string;
+  groupId: string;
+  title: string;
+  username?: string;
+  password: string;
+  url?: string;
+  notes?: string;
+  iconId: number;
+  createdAt: string;
+  updatedAt: string;
+  accessedAt: string;
+  expiresAt?: string;
+  tags: string[];
+  customFields: Record<string, string>;
+}
+
+interface KdbxGroup {
+  uuid: string;
+  name: string;
+  iconId: number;
+  parentId?: string;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
+  childGroups: string[];
+  entries: string[];
+}
+
+interface KdbxMetadata {
+  databaseName?: string;
+  databaseDescription?: string;
+  defaultUsername?: string;
+  maintenanceHistoryDays: number;
+  color?: string;
+}
+
+interface KdbxHeaderInfo {
+  version: string;
+  encryptionAlgorithm: 'AES-256' | 'ChaCha20';
+  kdfAlgorithm: 'Argon2d' | 'Argon2id' | 'AES-KDF';
+  kdfParams: { memory?: number; iterations?: number; parallelism?: number; rounds?: number };
+  compression: 'None' | 'Gzip';
+  entryCount: number;
+  groupCount: number;
+}
+```
 
 ## Building from Source
 
-### Prerequisites
-
-- Rust 1.94.0 or later
-- wasm-bindgen-cli
-
-### Build
-
 ```bash
-# Install wasm-bindgen-cli if not already installed
+# Prerequisites: Rust 1.94+, wasm-bindgen-cli
 cargo install wasm-bindgen-cli
 
-# Build the WASM module
+# Build WASM module
 .\build-wasm.bat
+
+# Or manually:
+cargo build --lib --target wasm32-unknown-unknown --release
+wasm-bindgen target/wasm32-unknown-unknown/release/kdbx_wasm.wasm \
+  --out-dir js --target web --no-typescript
 ```
 
 ## Browser Compatibility
 
-This library uses WebAssembly and requires a modern browser:
+Chrome 57+ · Firefox 52+ · Safari 11+ · Edge 16+
 
-- Chrome 57+
-- Firefox 52+
-- Safari 11+
-- Edge 16+
+## Security
 
-## Security Considerations
-
-- The master password is used to derive the encryption key
-- Key files can be used alongside or instead of passwords
-- All cryptographic operations are performed in WebAssembly
+- Master password derives the encryption key via Argon2/AES-KDF
+- Key file can be used alongside or instead of a password
+- All cryptographic operations execute inside WebAssembly
 - Sensitive data is cleared from memory when possible
 
 ## License
