@@ -1,4 +1,4 @@
-use crate::core::parser::{parse_kdbx, generate_kdbx, KdbxSession};
+use crate::core::{parser::{parse_kdbx, generate_kdbx}, KdbxSession};
 use crate::error::KdbxError;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;

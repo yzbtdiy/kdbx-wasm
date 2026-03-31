@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.5] - 2026-03-31
+
+### Changed
+- Major code refactoring: flattened module hierarchy
+  - `core/crypto/` (5 files) → single `core/crypto.rs`
+  - `core/types/` (4 files) → single `core/types.rs`
+  - `core/parser/` (4 files) → `core/parser.rs` + `core/header.rs` + `core/xml.rs`
+  - `api/dto/` (3 files) → single `api/dto.rs`
+  - `api/routes.rs` + `api/state.rs` → merged into `api/mod.rs`
+  - `infrastructure/config.rs` → merged into `infrastructure/mod.rs`
+- `KdbxError` now implements `IntoResponse`, eliminating handler error mapping boilerplate
+- Argon2d/Argon2id share internal implementation
+- Unified `generate_random_bytes` into `core::crypto`
+- Removed unused `api/middleware/` module
+- Updated README with project structure and concise examples
+
 ## [0.1.1] - 2026-03-21
 
 ### Changed

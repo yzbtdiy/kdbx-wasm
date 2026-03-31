@@ -1,5 +1,5 @@
 use axum::serve;
-use kdbx_wasm::{api::create_router, api::state::AppState, Config};
+use kdbx_wasm::{api::{create_router, AppState}, Config};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;

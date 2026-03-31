@@ -57,7 +57,6 @@ pub enum KdbxError {
     InvalidFieldValue(String),
 }
 
-// 实现从其他错误类型到KdbxError的转换
 impl From<serde_json::Error> for KdbxError {
     fn from(err: serde_json::Error) -> Self {
         KdbxError::SerializationError(err.to_string())
@@ -68,5 +67,47 @@ impl From<serde_json::Error> for KdbxError {
 impl From<config::ConfigError> for KdbxError {
     fn from(err: config::ConfigError) -> Self {
         KdbxError::ValidationError(err.to_string())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl axum::response::IntoResponse for KdbxError {
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+
+        let (status, code) = match &self {
+            KdbxError::InvalidSignature
+            | KdbxError::UnsupportedVersion(_, _)
+            | KdbxError::InvalidFileFormat
+            | KdbxError::ValidationError(_)
+            | KdbxError::MissingField(_)
+            | KdbxError::InvalidFieldValue(_)
+            | KdbxError::UnsupportedEncryptionAlgorithm
+            | KdbxError::UnsupportedKdfAlgorithm
+            | KdbxError::CompressionError(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
+
+            KdbxError::InvalidMasterKey
+            | KdbxError::DecryptionFailed
+            | KdbxError::HmacVerificationFailed => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
+
+            KdbxError::EntryNotFound(_)
+            | KdbxError::GroupNotFound(_)
+            | KdbxError::SessionNotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
+
+            KdbxError::SessionExpired(_) => (StatusCode::GONE, "SESSION_EXPIRED"),
+
+            KdbxError::IoError(_) | KdbxError::SerializationError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
+            }
+        };
+
+        let body = serde_json::json!({
+            "error": {
+                "code": code,
+                "message": self.to_string()
+            }
+        });
+
+        (status, axum::Json(body)).into_response()
     }
 }

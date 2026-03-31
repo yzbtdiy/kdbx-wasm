@@ -1,4 +1,5 @@
-use crate::core::types::{CompressionAlgorithm, EncryptionAlgorithm, KdbxHeader, FileVersion};
+use crate::core::crypto::generate_random_bytes;
+use crate::core::types::{CompressionAlgorithm, EncryptionAlgorithm, FileVersion, KdbxHeader};
 use crate::error::KdbxError;
 use crate::service::session::SessionStore;
 use uuid::Uuid;
@@ -67,7 +68,7 @@ impl FileService {
     }
 }
 
-/// 会话元数据
+/// Session metadata
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SessionMetadata {
     pub version: String,
@@ -75,13 +76,4 @@ pub struct SessionMetadata {
     pub kdf: String,
     pub entry_count: usize,
     pub group_count: usize,
-}
-
-/// 生成随机字节
-fn generate_random_bytes(len: usize) -> Vec<u8> {
-    use rand::RngCore;
-
-    let mut bytes = vec![0u8; len];
-    rand::rng().fill_bytes(&mut bytes);
-    bytes
 }

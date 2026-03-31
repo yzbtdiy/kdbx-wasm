@@ -9,13 +9,13 @@
 cargo build --lib --target wasm32-unknown-unknown --release
 
 # 生成 JS 绑定
-wasm-bindgen %CARGO_TARGET%\wasm32-unknown-unknown\release\kdbx_rs.wasm \
+wasm-bindgen %CARGO_TARGET%\wasm32-unknown-unknown\release\kdbx_wasm.wasm \
   --out-dir js \
   --target web \
   --no-typescript
 
 # 或使用优化（需要 wasm-opt）
-wasm-opt -Os js\kdbx_rs_bg.wasm -o js\kdbx_rs_bg.wasm
+wasm-opt -Os js\kdbx_wasm_bg.wasm -o js\kdbx_wasm_bg.wasm
 ```
 
 ### 2. 测试包
@@ -73,8 +73,8 @@ git push -u origin main
 
 | 文件 | 大小 | 说明 |
 |------|------|------|
-| kdbx_rs_bg.wasm | ~421 KB | WASM 模块 |
-| kdbx_rs.js | ~18 KB | WASM 绑定代码 |
+| kdbx_wasm_bg.wasm | ~421 KB | WASM 模块 |
+| kdbx_wasm.js | ~18 KB | WASM 绑定代码 |
 | index.js | ~0.5 KB | 主入口 |
 | index.d.ts | ~4 KB | TypeScript 类型定义 |
 | package.json | ~1 KB | NPM 配置 |
