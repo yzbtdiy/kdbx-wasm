@@ -1,0 +1,70 @@
+[package]
+name = "kdbx-wasm"
+version = "0.1.0"
+edition = "2024"
+authors = ["Your Name <your.email@example.com>"]
+description = "KDBX password database parser for JavaScript/WebAssembly"
+license = "MIT"
+repository = "https://github.com/yzbtdiy/kdbx-wasm"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# 核心依赖（所有目标）
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+uuid = { version = "1.16.0", features = ["v4", "serde", "js"] }
+flate2 = "1.1.0"
+thiserror = "2.0.12"
+anyhow = "1.0.97"
+aes = "0.8.4"
+chacha20 = "0.9.1"
+argon2 = "0.5.3"
+hmac = "0.12.1"
+sha2 = "0.10.8"
+cipher = "0.4.4"
+cbc = "0.1.2"
+base64 = "0.22.1"
+salsa20 = "0.10.2"
+roxmltree = "0.20.0"
+chrono = { version = "0.4.40", features = ["serde"] }
+bytes = "1.10.1"
+byteorder = "1.5.0"
+rand = "0.9.0"
+tracing = "0.1.41"
+getrandom = "0.3.4"
+
+# WASM 依赖
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.100"
+js-sys = "0.3.77"
+serde-wasm-bindgen = "0.6.5"
+console_error_panic_hook = "0.1.7"
+getrandom = { version = "0.3.4", features = ["wasm_js"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3.77"
+features = [
+  "console",
+]
+
+# 非 WASM 依赖（服务器）
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = { version = "0.8.1", features = ["multipart"] }
+tokio = { version = "1.44.0", features = ["full"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = ["trace", "cors"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+config = "0.15.11"
+futures = "0.3.31"
+
+[dev-dependencies]
+hex = "0.4.3"
+
+# 优化 WASM 构建
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

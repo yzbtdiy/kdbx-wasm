@@ -1,0 +1,27 @@
+/target
+/Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+*.kdbx
+test_*.kdbx
+
+# Config (keep example)
+config.toml
+!.codeartsdoer/
+
+# npm tarballs
+*.tgz
