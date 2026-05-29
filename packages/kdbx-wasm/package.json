@@ -1,0 +1,61 @@
+{
+  "name": "kdbx-wasm",
+  "version": "0.2.0",
+  "description": "KDBX password database parser for JavaScript/WebAssembly - Fast and secure KeePass KDBX 4 file parser",
+  "main": "nodejs/kdbx_wasm.js",
+  "module": "web/kdbx_wasm.js",
+  "types": "index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "node": "./nodejs/kdbx_wasm.js",
+      "browser": "./web/kdbx_wasm.js",
+      "import": "./kdbx_wasm.js",
+      "require": "./nodejs/kdbx_wasm.js",
+      "default": "./kdbx_wasm.js"
+    },
+    "./kdbx_wasm.js": {
+      "node": "./nodejs/kdbx_wasm.js",
+      "browser": "./web/kdbx_wasm.js",
+      "default": "./kdbx_wasm.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "kdbx_wasm.js",
+    "kdbx_wasm_bg.wasm",
+    "web/",
+    "nodejs/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "kdbx",
+    "keepass",
+    "password",
+    "password-manager",
+    "wasm",
+    "webassembly",
+    "rust",
+    "encryption",
+    "security"
+  ],
+  "author": "yzbtdiy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yzbtdiy/kdbx-wasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yzbtdiy/kdbx-wasm/issues"
+  },
+  "homepage": "https://github.com/yzbtdiy/kdbx-wasm#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
