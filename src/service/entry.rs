@@ -4,6 +4,34 @@ use crate::service::session::SessionStore;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// 创建条目参数
+pub struct CreateEntryParams {
+    pub group_id: Uuid,
+    pub title: String,
+    pub username: Option<String>,
+    pub password: String,
+    pub url: Option<String>,
+    pub notes: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub custom_fields: Option<HashMap<String, String>>,
+    pub icon_id: Option<u32>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// 更新条目参数
+pub struct UpdateEntryParams {
+    pub title: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub url: Option<String>,
+    pub notes: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub custom_fields: Option<HashMap<String, String>>,
+    pub icon_id: Option<u32>,
+    pub group_id: Option<Uuid>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 /// 条目服务
 pub struct EntryService {
     session_store: SessionStore,
@@ -18,17 +46,20 @@ impl EntryService {
     pub async fn create_entry(
         &self,
         session_id: &Uuid,
-        group_id: Uuid,
-        title: String,
-        username: Option<String>,
-        password: String,
-        url: Option<String>,
-        notes: Option<String>,
-        tags: Option<Vec<String>>,
-        custom_fields: Option<HashMap<String, String>>,
-        icon_id: Option<u32>,
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+        params: CreateEntryParams,
     ) -> Result<Entry, KdbxError> {
+        let CreateEntryParams {
+            group_id,
+            title,
+            username,
+            password,
+            url,
+            notes,
+            tags,
+            custom_fields,
+            icon_id,
+            expires_at,
+        } = params;
         // 验证必填字段
         if title.trim().is_empty() {
             return Err(KdbxError::ValidationError("Title is required".to_string()));
@@ -54,7 +85,7 @@ impl EntryService {
         }
 
         // 创建条目
-        let mut entry = Entry::new(group_id, title, SecString::from_str(&password));
+        let mut entry = Entry::new(group_id, title, SecString::from_plain(&password));
         entry.username = username;
         entry.url = url;
         entry.notes = notes;
@@ -83,7 +114,7 @@ impl EntryService {
             .entries
             .get(entry_id)
             .cloned()
-            .ok_or_else(|| KdbxError::EntryNotFound(*entry_id))
+            .ok_or(KdbxError::EntryNotFound(*entry_id))
     }
 
     /// 列出条目
@@ -103,10 +134,10 @@ impl EntryService {
             .values()
             .filter(|entry| {
                 // 过滤分组
-                if let Some(gid) = group_id {
-                    if entry.group_id != gid {
-                        return false;
-                    }
+                if let Some(gid) = group_id
+                    && entry.group_id != gid
+                {
+                    return false;
                 }
 
                 // 搜索过滤
@@ -151,17 +182,20 @@ impl EntryService {
         &self,
         session_id: &Uuid,
         entry_id: &Uuid,
-        title: Option<String>,
-        username: Option<String>,
-        password: Option<String>,
-        url: Option<String>,
-        notes: Option<String>,
-        tags: Option<Vec<String>>,
-        custom_fields: Option<HashMap<String, String>>,
-        icon_id: Option<u32>,
-        group_id: Option<Uuid>,
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+        params: UpdateEntryParams,
     ) -> Result<Entry, KdbxError> {
+        let UpdateEntryParams {
+            title,
+            username,
+            password,
+            url,
+            notes,
+            tags,
+            custom_fields,
+            icon_id,
+            group_id,
+            expires_at,
+        } = params;
         // 获取会话
         let mut session = self.session_store.get_session(session_id).await?;
 
@@ -170,7 +204,7 @@ impl EntryService {
             .kdbx_session
             .entries
             .get_mut(entry_id)
-            .ok_or_else(|| KdbxError::EntryNotFound(*entry_id))?;
+            .ok_or(KdbxError::EntryNotFound(*entry_id))?;
 
         // 更新字段
         if let Some(t) = title {
@@ -185,7 +219,7 @@ impl EntryService {
         }
 
         if let Some(p) = password {
-            entry.password = Some(SecString::from_str(&p));
+            entry.password = Some(SecString::from_plain(&p));
         }
 
         if let Some(u) = url {
@@ -244,14 +278,14 @@ impl EntryService {
                 .kdbx_session
                 .entries
                 .remove(entry_id)
-                .ok_or_else(|| KdbxError::EntryNotFound(*entry_id))?;
+                .ok_or(KdbxError::EntryNotFound(*entry_id))?;
         } else {
             // 软删除（添加到删除对象列表）
             let entry = session
                 .kdbx_session
                 .entries
                 .remove(entry_id)
-                .ok_or_else(|| KdbxError::EntryNotFound(*entry_id))?;
+                .ok_or(KdbxError::EntryNotFound(*entry_id))?;
 
             let deleted_obj = crate::core::types::DeletedObject::new(entry.id);
             session.kdbx_session.deleted_objects.push(deleted_obj);

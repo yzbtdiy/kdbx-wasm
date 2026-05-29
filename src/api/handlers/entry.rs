@@ -1,6 +1,7 @@
 use crate::api::dto::*;
 use crate::api::AppState;
 use crate::error::KdbxError;
+use crate::service::entry::{CreateEntryParams, UpdateEntryParams};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -20,13 +21,19 @@ pub async fn create_entry(
     Path(session_id): Path<Uuid>,
     Json(req): Json<CreateEntryRequest>,
 ) -> Result<Json<EntryResponse>, KdbxError> {
-    let entry = state.entry_service.create_entry(
-        &session_id,
-        req.group_id.unwrap_or(Uuid::nil()),
-        req.title, req.username, req.password,
-        req.url, req.notes, req.tags, req.custom_fields,
-        req.icon_id, req.expires_at,
-    ).await?;
+    let params = CreateEntryParams {
+        group_id: req.group_id.unwrap_or(Uuid::nil()),
+        title: req.title,
+        username: req.username,
+        password: req.password,
+        url: req.url,
+        notes: req.notes,
+        tags: req.tags,
+        custom_fields: req.custom_fields,
+        icon_id: req.icon_id,
+        expires_at: req.expires_at,
+    };
+    let entry = state.entry_service.create_entry(&session_id, params).await?;
     Ok(Json(EntryResponse::from_entry(entry)))
 }
 
@@ -62,12 +69,19 @@ pub async fn update_entry(
     Path((session_id, entry_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateEntryRequest>,
 ) -> Result<Json<EntryResponse>, KdbxError> {
-    let entry = state.entry_service.update_entry(
-        &session_id, &entry_id,
-        req.title, req.username, req.password,
-        req.url, req.notes, req.tags, req.custom_fields,
-        req.icon_id, req.group_id, req.expires_at,
-    ).await?;
+    let params = UpdateEntryParams {
+        title: req.title,
+        username: req.username,
+        password: req.password,
+        url: req.url,
+        notes: req.notes,
+        tags: req.tags,
+        custom_fields: req.custom_fields,
+        icon_id: req.icon_id,
+        group_id: req.group_id,
+        expires_at: req.expires_at,
+    };
+    let entry = state.entry_service.update_entry(&session_id, &entry_id, params).await?;
     Ok(Json(EntryResponse::from_entry(entry)))
 }
 

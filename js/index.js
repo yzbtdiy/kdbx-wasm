@@ -1,5 +1,5 @@
 // KDBX password database parser for JavaScript
-// This is a thin wrapper around the WebAssembly module
+// Thin wrapper around the WebAssembly module
 
 import * as wasm from './kdbx_wasm.js';
 
@@ -8,11 +8,16 @@ export const KdbxDatabase = wasm.KdbxDatabase;
 export const isKdbxFile = wasm.isKdbxFile;
 export const getFileInfo = wasm.getFileInfo;
 export const start = wasm.start;
+export const initSync = wasm.initSync;
 
-// Default export for convenience
-export default {
-  KdbxDatabase,
-  isKdbxFile,
-  getFileInfo,
-  start,
-};
+// Re-export default (init function)
+export { wasm as default };
+
+/**
+ * Initialize the WASM module with an optional module path.
+ * This is a convenience wrapper around the default export.
+ * @param {string|URL|Request|WebAssembly.Module} [module_or_path]
+ */
+export async function initKdbxWasm(module_or_path) {
+    return wasm.default(module_or_path);
+}

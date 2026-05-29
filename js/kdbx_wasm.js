@@ -1,6 +1,3 @@
-/**
- * KDBX Database handle for JavaScript
- */
 export class KdbxDatabase {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -13,7 +10,6 @@ export class KdbxDatabase {
         wasm.__wbg_kdbxdatabase_free(ptr, 0);
     }
     /**
-     * Get all entries as an array
      * @returns {Array<any>}
      */
     getEntries() {
@@ -24,7 +20,6 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Get entries in a specific group
      * @param {string} group_uuid
      * @returns {Array<any>}
      */
@@ -38,7 +33,6 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Get a specific entry by UUID
      * @param {string} uuid
      * @returns {any}
      */
@@ -52,7 +46,6 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Get a specific group by UUID
      * @param {string} uuid
      * @returns {any}
      */
@@ -66,7 +59,6 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Get all groups as an array
      * @returns {Array<any>}
      */
     getGroups() {
@@ -77,18 +69,16 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Get header information
      * @returns {any}
      */
-    get header_info() {
-        const ret = wasm.kdbxdatabase_header_info(this.__wbg_ptr);
+    get headerInfo() {
+        const ret = wasm.kdbxdatabase_headerInfo(this.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Get database metadata
      * @returns {any}
      */
     get metadata() {
@@ -99,16 +89,6 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Open a KDBX file from bytes with optional password and key file
-     *
-     * # Arguments
-     * * `data` - The KDBX file bytes as Uint8Array
-     * * `password` - Optional master password
-     * * `key_file` - Optional key file bytes as Uint8Array
-     *
-     * # Returns
-     * * `Ok(KdbxDatabase)` on success
-     * * `Err(String)` on error
      * @param {Uint8Array} data
      * @param {string | null} [password]
      * @param {Uint8Array | null} [key_file]
@@ -120,12 +100,11 @@ export class KdbxDatabase {
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
-        this.__wbg_ptr = ret[0] >>> 0;
+        this.__wbg_ptr = ret[0];
         KdbxDatabaseFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
     /**
-     * Get the root group UUID
      * @returns {string}
      */
     get rootGroupUuid() {
@@ -141,7 +120,6 @@ export class KdbxDatabase {
         }
     }
     /**
-     * Search entries by keyword
      * @param {string} query
      * @returns {Array<any>}
      */
@@ -155,7 +133,6 @@ export class KdbxDatabase {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Export the database to KDBX format bytes
      * @param {string | null} [password]
      * @param {Uint8Array | null} [key_file]
      * @returns {Uint8Array}
@@ -173,7 +150,6 @@ export class KdbxDatabase {
 if (Symbol.dispose) KdbxDatabase.prototype[Symbol.dispose] = KdbxDatabase.prototype.free;
 
 /**
- * Get KDBX file version info without decrypting
  * @param {Uint8Array} data
  * @returns {any}
  */
@@ -186,7 +162,6 @@ export function getFileInfo(data) {
 }
 
 /**
- * Check if data appears to be a valid KDBX file
  * @param {Uint8Array} data
  * @returns {boolean}
  */
@@ -195,17 +170,13 @@ export function isKdbxFile(data) {
     return ret !== 0;
 }
 
-/**
- * Initialize panic hook for better error messages in WASM
- */
 export function start() {
     wasm.start();
 }
-
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg_Error_83742b46f01ce22d: function(arg0, arg1) {
+        __wbg_Error_ef53bc310eb298a0: function(arg0, arg1) {
             const ret = Error(getStringFromWasm0(arg0, arg1));
             return ret;
         },
@@ -216,11 +187,18 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
-        __wbg___wbindgen_is_string_7ef6b97b02428fae: function(arg0) {
+        __wbg___wbindgen_debug_string_0accd80f45e5faa2: function(arg0, arg1) {
+            const ret = debugString(arg1);
+            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+        },
+        __wbg___wbindgen_is_string_c236cabd84a4d769: function(arg0) {
             const ret = typeof(arg0) === 'string';
             return ret;
         },
-        __wbg___wbindgen_throw_6ddd609b62940d55: function(arg0, arg1) {
+        __wbg___wbindgen_throw_1506f2235d1bdba0: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
         __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
@@ -237,18 +215,18 @@ function __wbg_get_imports() {
         __wbg_getRandomValues_3f44b700395062e5: function() { return handleError(function (arg0, arg1) {
             globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
         }, arguments); },
-        __wbg_getRandomValues_a1cf2e70b003a59d: function() { return handleError(function (arg0, arg1) {
+        __wbg_getRandomValues_ef12552bf5acd2fe: function() { return handleError(function (arg0, arg1) {
             globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
         }, arguments); },
-        __wbg_getTime_1dad7b5386ddd2d9: function(arg0) {
+        __wbg_getTime_00b3f7db575e4ef5: function(arg0) {
             const ret = arg0.getTime();
             return ret;
         },
-        __wbg_length_ea16607d7b61445b: function(arg0) {
+        __wbg_length_4a591ecaa01354d9: function(arg0) {
             const ret = arg0.length;
             return ret;
         },
-        __wbg_new_0_1dcafdf5e786e876: function() {
+        __wbg_new_0_445c13a750296eb6: function() {
             const ret = new Date();
             return ret;
         },
@@ -256,40 +234,40 @@ function __wbg_get_imports() {
             const ret = new Error();
             return ret;
         },
-        __wbg_new_49d5571bd3f0c4d4: function() {
+        __wbg_new_622fc80556be2e26: function() {
             const ret = new Map();
             return ret;
         },
-        __wbg_new_a70fbab9066b301f: function() {
-            const ret = new Array();
-            return ret;
-        },
-        __wbg_new_ab79df5bd7c26067: function() {
+        __wbg_new_ce1ab61c1c2b300d: function() {
             const ret = new Object();
             return ret;
         },
-        __wbg_new_from_slice_22da9388ac046e50: function(arg0, arg1) {
+        __wbg_new_d90091b82fdf5b91: function() {
+            const ret = new Array();
+            return ret;
+        },
+        __wbg_new_from_slice_18fa1f71286d66b8: function(arg0, arg1) {
             const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
             return ret;
         },
-        __wbg_prototypesetcall_d62e5099504357e6: function(arg0, arg1, arg2) {
+        __wbg_prototypesetcall_3249fc62a0fafa30: function(arg0, arg1, arg2) {
             Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
         },
-        __wbg_push_e87b0e732085a946: function(arg0, arg1) {
+        __wbg_push_a6822215aa43e71c: function(arg0, arg1) {
             const ret = arg0.push(arg1);
             return ret;
         },
-        __wbg_set_282384002438957f: function(arg0, arg1, arg2) {
-            arg0[arg1 >>> 0] = arg2;
+        __wbg_set_52b1e1eb5bed906a: function(arg0, arg1, arg2) {
+            const ret = arg0.set(arg1, arg2);
+            return ret;
         },
         __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
             arg0[arg1] = arg2;
         },
-        __wbg_set_bf7251625df30a02: function(arg0, arg1, arg2) {
-            const ret = arg0.set(arg1, arg2);
-            return ret;
+        __wbg_set_dca99999bba88a9a: function(arg0, arg1, arg2) {
+            arg0[arg1 >>> 0] = arg2;
         },
-        __wbg_slice_f3fd3c2bec9310f6: function(arg0, arg1, arg2) {
+        __wbg_slice_c87a896d40083a6c: function(arg0, arg1, arg2) {
             const ret = arg0.slice(arg1 >>> 0, arg2 >>> 0);
             return ret;
         },
@@ -305,17 +283,12 @@ function __wbg_get_imports() {
             const ret = arg0;
             return ret;
         },
-        __wbindgen_cast_0000000000000002: function(arg0) {
-            // Cast intrinsic for `I64 -> Externref`.
-            const ret = arg0;
-            return ret;
-        },
-        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
+        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
         },
-        __wbindgen_cast_0000000000000004: function(arg0) {
+        __wbindgen_cast_0000000000000003: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return ret;
@@ -338,12 +311,77 @@ function __wbg_get_imports() {
 
 const KdbxDatabaseFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_kdbxdatabase_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_kdbxdatabase_free(ptr, 1));
 
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();
     wasm.__wbindgen_externrefs.set(idx, obj);
     return idx;
+}
+
+function debugString(val) {
+    // primitive types
+    const type = typeof val;
+    if (type == 'number' || type == 'boolean' || val == null) {
+        return  `${val}`;
+    }
+    if (type == 'string') {
+        return `"${val}"`;
+    }
+    if (type == 'symbol') {
+        const description = val.description;
+        if (description == null) {
+            return 'Symbol';
+        } else {
+            return `Symbol(${description})`;
+        }
+    }
+    if (type == 'function') {
+        const name = val.name;
+        if (typeof name == 'string' && name.length > 0) {
+            return `Function(${name})`;
+        } else {
+            return 'Function';
+        }
+    }
+    // objects
+    if (Array.isArray(val)) {
+        const length = val.length;
+        let debug = '[';
+        if (length > 0) {
+            debug += debugString(val[0]);
+        }
+        for(let i = 1; i < length; i++) {
+            debug += ', ' + debugString(val[i]);
+        }
+        debug += ']';
+        return debug;
+    }
+    // Test for built-in
+    const builtInMatches = /\[object ([^\]]+)\]/.exec(toString.call(val));
+    let className;
+    if (builtInMatches && builtInMatches.length > 1) {
+        className = builtInMatches[1];
+    } else {
+        // Failed to match the standard '[object ClassName]'
+        return toString.call(val);
+    }
+    if (className == 'Object') {
+        // we're a user defined class or Object
+        // JSON.stringify avoids problems with cycles, and is generally much
+        // easier than looping through ownProperties of `val`.
+        try {
+            return 'Object(' + JSON.stringify(val) + ')';
+        } catch (_) {
+            return 'Object';
+        }
+    }
+    // errors
+    if (val instanceof Error) {
+        return `${val.name}: ${val.message}\n${val.stack}`;
+    }
+    // TODO we could test for more things here, like `Set`s and `Map`s.
+    return className;
 }
 
 function getArrayU8FromWasm0(ptr, len) {
@@ -360,8 +398,7 @@ function getDataViewMemory0() {
 }
 
 function getStringFromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return decodeText(ptr, len);
+    return decodeText(ptr >>> 0, len);
 }
 
 let cachedUint8ArrayMemory0 = null;
@@ -457,8 +494,9 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-let wasmModule, wasm;
+let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module) {
+    wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
     cachedDataViewMemory0 = null;

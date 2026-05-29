@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.6] - 2026-05-29
+
+### Fixed
+- Fixed `metadata`, `headerInfo`, and `getFileInfo` returning empty objects in WASM/JS bindings
+  - Root cause: `serde_wasm_bindgen::to_value` with `serde_json::Value` produced invalid JS objects
+  - Fix: Use strongly-typed Rust structs (`JsMetadata`, `JsHeaderInfo`, `JsFileInfo`) for serialization
+- Fixed `headerInfo` getter naming mismatch (was `header_info` in generated JS, now correctly `headerInfo`)
+- Fixed `customFields` (HashMap) not readable from JavaScript
+  - Root cause: `serde_wasm_bindgen` serializes `HashMap` to JS `Map` by default, which is invisible to `Object.keys()` and property access
+  - Fix: Use `Serializer::json_compatible()` to serialize `HashMap` as plain JS objects
+
 ## [0.1.5] - 2026-03-31
 
 ### Changed

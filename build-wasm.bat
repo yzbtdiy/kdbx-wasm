@@ -27,4 +27,13 @@ wasm-bindgen "%TARGET_DIR%\wasm32-unknown-unknown\release\kdbx_wasm.wasm" ^
     --target web ^
     --no-typescript
 
+REM Optional: optimize WASM size with wasm-opt
+where wasm-opt >nul 2>nul
+if %errorlevel% equ 0 (
+    echo Optimizing WASM with wasm-opt...
+    wasm-opt js\kdbx_wasm_bg.wasm -O3 -o js\kdbx_wasm_bg.wasm
+) else (
+    echo wasm-opt not found, skipping optimization. Install binaryen for smaller WASM files.
+)
+
 echo Build complete! Output in js/

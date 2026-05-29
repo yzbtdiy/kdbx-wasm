@@ -10,7 +10,7 @@ use flate2::Compression;
 use rand::RngCore;
 use sha2::{Digest, Sha256, Sha512};
 use std::collections::HashMap;
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read, Seek, Write};
 use uuid::Uuid;
 
 const INNER_STREAM_CHACHA20: u32 = 3;
@@ -117,9 +117,11 @@ fn compress(data: &[u8], algo: CompressionAlgorithm) -> Result<Vec<u8>, KdbxErro
 
 // ── Inner Data Stream ──
 
+type ParsedData = (HashMap<Uuid, Group>, HashMap<Uuid, Entry>, Vec<DeletedObject>, Metadata);
+
 fn parse_data_stream(
     data: &[u8],
-) -> Result<(HashMap<Uuid, Group>, HashMap<Uuid, Entry>, Vec<DeletedObject>, Metadata), KdbxError> {
+) -> Result<ParsedData, KdbxError> {
     let mut cursor = Cursor::new(data);
     let mut stream_id: Option<u32> = None;
     let mut stream_key: Option<Vec<u8>> = None;
@@ -258,9 +260,9 @@ fn find_header_end(data: &[u8]) -> Result<usize, KdbxError> {
 
     loop {
         let field_id = cursor.read_u8()?;
-        let field_size = cursor.read_u32::<LittleEndian>()? as usize;
+        let field_size = cursor.read_u32::<LittleEndian>()? as u64;
         if field_size > 0 {
-            cursor.read_exact(&mut vec![0u8; field_size])?;
+            cursor.seek(std::io::SeekFrom::Current(field_size as i64))?;
         }
         if field_id == 0 {
             break;
@@ -421,7 +423,7 @@ mod tests {
         groups.insert(group.id, group);
 
         let mut entries = HashMap::new();
-        let entry = Entry::new(gid, "Test Entry".to_string(), SecString::from_str("password"));
+        let entry = Entry::new(gid, "Test Entry".to_string(), SecString::from_plain("password"));
         entries.insert(entry.id, entry);
 
         let metadata = Metadata::default();
@@ -433,4 +435,5 @@ mod tests {
         assert_eq!(pg.len(), 1);
         assert_eq!(pe.len(), 1);
     }
+
 }

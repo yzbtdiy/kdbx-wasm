@@ -1,8 +1,8 @@
 [package]
 name = "kdbx-wasm"
-version = "0.1.0"
+version = "0.1.6"
 edition = "2024"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["yzbtdiy"]
 description = "KDBX password database parser for JavaScript/WebAssembly"
 license = "MIT"
 repository = "https://github.com/yzbtdiy/kdbx-wasm"
@@ -34,6 +34,7 @@ byteorder = "1.5.0"
 rand = "0.9.0"
 tracing = "0.1.41"
 getrandom = "0.3.4"
+zeroize = { version = "1.8.1", features = ["derive"] }
 
 # WASM 依赖
 [target.'cfg(target_arch = "wasm32")'.dependencies]

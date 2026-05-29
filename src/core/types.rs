@@ -3,6 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use uuid::Uuid;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // ── File Signatures ──
 
@@ -246,53 +247,52 @@ pub struct KdbxSession {
 
 // ── Secure Memory Types ──
 
-pub struct SecVec<T> {
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SecVec<T: Zeroize> {
     data: Vec<T>,
 }
 
-impl<T> SecVec<T> {
+impl<T: Zeroize> std::fmt::Debug for SecVec<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SecVec([REDACTED])")
+    }
+}
+
+impl<T: Zeroize> SecVec<T> {
     pub fn new(data: Vec<T>) -> Self {
         Self { data }
     }
 
     pub fn into_vec(mut self) -> Vec<T> {
-        let data = std::mem::take(&mut self.data);
-        std::mem::forget(self);
-        data
+        std::mem::take(&mut self.data)
     }
 }
 
-impl<T> Drop for SecVec<T> {
-    fn drop(&mut self) {
-        unsafe {
-            for byte in self.data.iter_mut() {
-                std::ptr::write_volatile(byte, std::mem::zeroed());
-            }
-        }
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
-impl<T> Deref for SecVec<T> {
+impl<T: Zeroize> Deref for SecVec<T> {
     type Target = Vec<T>;
     fn deref(&self) -> &Self::Target {
         &self.data
     }
 }
 
-impl<T> DerefMut for SecVec<T> {
+impl<T: Zeroize> DerefMut for SecVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
 }
 
-impl<T: Clone> Clone for SecVec<T> {
+impl<T: Zeroize + Clone> Clone for SecVec<T> {
     fn clone(&self) -> Self {
         Self { data: self.data.clone() }
     }
 }
 
-pub struct SecString(SecVec<u8>);
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SecString {
+    #[zeroize(skip)]
+    _marker: (),
+    data: Vec<u8>,
+}
 
 impl std::fmt::Debug for SecString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -301,30 +301,39 @@ impl std::fmt::Debug for SecString {
 }
 
 impl SecString {
-    pub fn from_str(s: &str) -> Self {
-        Self(SecVec::new(s.as_bytes().to_vec()))
+    pub fn from_plain(s: &str) -> Self {
+        Self {
+            _marker: (),
+            data: s.as_bytes().to_vec(),
+        }
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Self(SecVec::new(bytes))
+        Self {
+            _marker: (),
+            data: bytes,
+        }
     }
 
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.0).unwrap_or("")
+        std::str::from_utf8(&self.data).unwrap_or("")
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+        &self.data
     }
 
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0.into_vec()
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        std::mem::take(&mut self.data)
     }
 }
 
 impl Clone for SecString {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            _marker: (),
+            data: self.data.clone(),
+        }
     }
 }
 
@@ -333,7 +342,7 @@ impl Serialize for SecString {
     where
         S: Serializer,
     {
-        let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &**self);
+        let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &self.data);
         serializer.serialize_str(&encoded)
     }
 }
@@ -353,7 +362,7 @@ impl<'de> Deserialize<'de> for SecString {
 impl Deref for SecString {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.data
     }
 }
 
@@ -383,7 +392,7 @@ mod tests {
     #[test]
     fn test_entry_creation() {
         let group_id = Uuid::new_v4();
-        let entry = Entry::new(group_id, "Test".to_string(), SecString::from_str("pass"));
+        let entry = Entry::new(group_id, "Test".to_string(), SecString::from_plain("pass"));
         assert_eq!(entry.title, "Test");
         assert_eq!(entry.group_id, group_id);
     }
@@ -398,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_sec_string() {
-        let password = SecString::from_str("my_secret_password");
+        let password = SecString::from_plain("my_secret_password");
         assert_eq!(password.as_str(), "my_secret_password");
     }
 }

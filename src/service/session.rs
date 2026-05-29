@@ -1,4 +1,4 @@
-use crate::core::{parser::{parse_kdbx, generate_kdbx}, KdbxSession};
+use crate::core::{parser::{parse_kdbx, generate_kdbx}, KdbxSession, SecString, SecVec};
 use crate::error::KdbxError;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -15,15 +15,15 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
     pub last_accessed_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
-    pub master_password: Option<String>,
-    pub key_file_data: Option<Vec<u8>>,
+    pub master_password: Option<SecString>,
+    pub key_file_data: Option<SecVec<u8>>,
 }
 
 impl Session {
     pub fn new(
         kdbx_session: KdbxSession,
-        master_password: Option<String>,
-        key_file_data: Option<Vec<u8>>,
+        master_password: Option<SecString>,
+        key_file_data: Option<SecVec<u8>>,
         timeout: Duration,
     ) -> Self {
         let now = Utc::now();
@@ -69,15 +69,18 @@ impl SessionStore {
         master_password: Option<String>,
         key_file_data: Option<Vec<u8>>,
     ) -> Result<Session, KdbxError> {
+        let mp = master_password.map(|s| SecString::from_plain(&s));
+        let kf = key_file_data.map(SecVec::new);
+
         // 解析KDBX文件
         let kdbx_session = parse_kdbx(
             kdbx_data,
-            master_password.as_deref(),
-            key_file_data.as_deref().map(|v| &v[..]),
+            mp.as_ref().map(|s| s.as_str()),
+            kf.as_deref().map(|v| v.as_slice()),
         )?;
 
         // 创建会话
-        let session = Session::new(kdbx_session, master_password, key_file_data, self.timeout);
+        let session = Session::new(kdbx_session, mp, kf, self.timeout);
         let session_id = session.id;
 
         // 存储会话
@@ -89,14 +92,25 @@ impl SessionStore {
 
     /// 获取会话
     pub async fn get_session(&self, session_id: &Uuid) -> Result<Session, KdbxError> {
-        let mut sessions = self.sessions.write().await;
+        // Fast path: read lock for non-expired sessions
+        {
+            let sessions = self.sessions.read().await;
+            if let Some(session) = sessions.get(session_id) {
+                if !session.is_expired() {
+                    return Ok(session.clone());
+                }
+            } else {
+                return Err(KdbxError::SessionNotFound(*session_id));
+            }
+        }
 
+        // Slow path: write lock to clean up expired session or touch
+        let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
             if session.is_expired() {
                 sessions.remove(session_id);
                 return Err(KdbxError::SessionExpired(*session_id));
             }
-
             session.touch();
             Ok(session.clone())
         } else {
@@ -108,11 +122,14 @@ impl SessionStore {
     pub async fn update_session(&self, session: Session) -> Result<(), KdbxError> {
         let mut sessions = self.sessions.write().await;
 
-        if sessions.contains_key(&session.id) {
-            sessions.insert(session.id, session);
-            Ok(())
-        } else {
-            Err(KdbxError::SessionNotFound(session.id))
+        match sessions.entry(session.id) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                e.insert(session);
+                Ok(())
+            }
+            std::collections::hash_map::Entry::Vacant(_) => {
+                Err(KdbxError::SessionNotFound(session.id))
+            }
         }
     }
 
@@ -134,8 +151,8 @@ impl SessionStore {
 
         generate_kdbx(
             &session.kdbx_session,
-            session.master_password.as_deref(),
-            session.key_file_data.as_deref().map(|v| &v[..]),
+            session.master_password.as_ref().map(|s| s.as_str()),
+            session.key_file_data.as_deref().map(|v| v.as_slice()),
         )
     }
 

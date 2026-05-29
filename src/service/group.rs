@@ -33,10 +33,10 @@ impl GroupService {
         let mut session = self.session_store.get_session(session_id).await?;
 
         // 验证父分组存在
-        if let Some(pid) = parent_id {
-            if !session.kdbx_session.groups.contains_key(&pid) {
-                return Err(KdbxError::GroupNotFound(pid));
-            }
+        if let Some(pid) = parent_id
+            && !session.kdbx_session.groups.contains_key(&pid)
+        {
+            return Err(KdbxError::GroupNotFound(pid));
         }
 
         // 创建分组
@@ -63,7 +63,7 @@ impl GroupService {
             .groups
             .get(group_id)
             .cloned()
-            .ok_or_else(|| KdbxError::GroupNotFound(*group_id))
+            .ok_or(KdbxError::GroupNotFound(*group_id))
     }
 
     /// 获取分组树
@@ -143,7 +143,7 @@ impl GroupService {
             .kdbx_session
             .groups
             .get_mut(group_id)
-            .ok_or_else(|| KdbxError::GroupNotFound(*group_id))?;
+            .ok_or(KdbxError::GroupNotFound(*group_id))?;
 
         // 更新字段
         if let Some(n) = name {

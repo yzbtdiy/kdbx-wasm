@@ -19,7 +19,7 @@ pub fn encrypt_aes256_cbc(plaintext: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec
     let cipher = Aes256CbcEnc::new(&key.into(), &iv.into());
     let padding_len = 16 - (plaintext.len() % 16);
     let mut buf = plaintext.to_vec();
-    buf.extend(std::iter::repeat(0).take(padding_len));
+    buf.extend(std::iter::repeat_n(0, padding_len));
 
     let ciphertext = cipher
         .encrypt_padded_mut::<Pkcs7>(&mut buf, plaintext.len())

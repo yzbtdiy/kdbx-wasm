@@ -42,10 +42,12 @@ impl ProtectedStream {
 
 // ── Parse XML ──
 
+pub type ParsedXml = (HashMap<Uuid, Group>, HashMap<Uuid, Entry>, Vec<DeletedObject>, Metadata);
+
 pub fn parse_xml(
     data: &[u8],
     mut protected_stream: Option<&mut ProtectedStream>,
-) -> Result<(HashMap<Uuid, Group>, HashMap<Uuid, Entry>, Vec<DeletedObject>, Metadata), KdbxError> {
+) -> Result<ParsedXml, KdbxError> {
     let xml_str = std::str::from_utf8(data)
         .map_err(|e| KdbxError::SerializationError(e.to_string()))?;
     let doc = roxmltree::Document::parse(xml_str)
@@ -168,7 +170,7 @@ fn parse_entry_node(
         match key.as_str() {
             "Title" => entry.title = value,
             "UserName" => entry.username = non_empty(value),
-            "Password" if !value.is_empty() => entry.password = Some(SecString::from_str(&value)),
+            "Password" if !value.is_empty() => entry.password = Some(SecString::from_plain(&value)),
             "URL" => entry.url = non_empty(value),
             "Notes" => entry.notes = non_empty(value),
             _ => { entry.custom_fields.insert(key, value); }
@@ -436,11 +438,18 @@ fn non_empty(value: String) -> Option<String> {
 }
 
 fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+    let mut result = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&apos;"),
+            c => result.push(c),
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -460,7 +469,7 @@ mod tests {
         groups.insert(group.id, group);
 
         let mut entries = HashMap::new();
-        let entry = Entry::new(group_id, "Entry".to_string(), SecString::from_str("secret"));
+        let entry = Entry::new(group_id, "Entry".to_string(), SecString::from_plain("secret"));
         entries.insert(entry.id, entry);
 
         let metadata = Metadata::default();

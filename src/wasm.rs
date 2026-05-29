@@ -49,6 +49,46 @@ struct JsGroup {
     entries: Vec<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsMetadata {
+    database_name: Option<String>,
+    database_description: Option<String>,
+    default_username: Option<String>,
+    maintenance_history_days: u32,
+    color: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsKdfParams {
+    memory: Option<u64>,
+    iterations: Option<u64>,
+    parallelism: Option<u32>,
+    rounds: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsHeaderInfo {
+    version: String,
+    encryption_algorithm: String,
+    kdf_algorithm: String,
+    kdf_params: JsKdfParams,
+    compression: String,
+    entry_count: usize,
+    group_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JsFileInfo {
+    version: String,
+    encryption_algorithm: String,
+    kdf_algorithm: String,
+    compression: String,
+}
+
 // ── KDBX Database ──
 
 #[wasm_bindgen]
@@ -70,35 +110,50 @@ impl KdbxDatabase {
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> Result<JsValue, JsValue> {
         let meta = &self.session.metadata;
-        to_js(&serde_json::json!({
-            "databaseName": meta.database_name,
-            "databaseDescription": meta.database_description,
-            "defaultUsername": meta.default_username,
-            "maintenanceHistoryDays": meta.maintenance_history_days,
-            "color": meta.color,
-        }))
+        to_js(&JsMetadata {
+            database_name: meta.database_name.clone(),
+            database_description: meta.database_description.clone(),
+            default_username: meta.default_username.clone(),
+            maintenance_history_days: meta.maintenance_history_days,
+            color: meta.color.clone(),
+        })
     }
 
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = headerInfo)]
     pub fn header_info(&self) -> Result<JsValue, JsValue> {
         let h = &self.session.header;
         let (kdf_name, kdf_params) = match &h.kdf {
             KdfAlgorithm::Argon2d { memory, iterations, parallelism, .. } =>
-                ("Argon2d", serde_json::json!({ "memory": memory, "iterations": iterations, "parallelism": parallelism })),
+                ("Argon2d", JsKdfParams {
+                    memory: Some(*memory),
+                    iterations: Some(*iterations),
+                    parallelism: Some(*parallelism),
+                    rounds: None,
+                }),
             KdfAlgorithm::Argon2id { memory, iterations, parallelism, .. } =>
-                ("Argon2id", serde_json::json!({ "memory": memory, "iterations": iterations, "parallelism": parallelism })),
+                ("Argon2id", JsKdfParams {
+                    memory: Some(*memory),
+                    iterations: Some(*iterations),
+                    parallelism: Some(*parallelism),
+                    rounds: None,
+                }),
             KdfAlgorithm::AesKdf { rounds, .. } =>
-                ("AES-KDF", serde_json::json!({ "rounds": rounds })),
+                ("AES-KDF", JsKdfParams {
+                    memory: None,
+                    iterations: None,
+                    parallelism: None,
+                    rounds: Some(*rounds),
+                }),
         };
-        to_js(&serde_json::json!({
-            "version": "4.0",
-            "encryptionAlgorithm": encryption_name(&h.encryption),
-            "kdfAlgorithm": kdf_name,
-            "kdfParams": kdf_params,
-            "compression": compression_name(&h.compression),
-            "entryCount": self.session.entries.len(),
-            "groupCount": self.session.groups.len(),
-        }))
+        to_js(&JsHeaderInfo {
+            version: "4.0".to_string(),
+            encryption_algorithm: encryption_name(&h.encryption).to_string(),
+            kdf_algorithm: kdf_name.to_string(),
+            kdf_params,
+            compression: compression_name(&h.compression).to_string(),
+            entry_count: self.session.entries.len(),
+            group_count: self.session.groups.len(),
+        })
     }
 
     #[wasm_bindgen(js_name = getEntries)]
@@ -121,8 +176,23 @@ impl KdbxDatabase {
     #[wasm_bindgen(js_name = getGroups)]
     pub fn get_groups(&self) -> Result<Array, JsValue> {
         let array = Array::new();
+
+        // Pre-build indexes to avoid O(n²) scans in group_to_js
+        let mut child_groups_map: HashMap<Uuid, Vec<String>> = HashMap::new();
+        let mut entries_map: HashMap<Uuid, Vec<String>> = HashMap::new();
+        for g in self.session.groups.values() {
+            if let Some(pid) = g.parent_id {
+                child_groups_map.entry(pid).or_default().push(g.id.to_string());
+            }
+        }
+        for e in self.session.entries.values() {
+            entries_map.entry(e.group_id).or_default().push(e.id.to_string());
+        }
+
         for group in self.session.groups.values() {
-            array.push(&self.group_to_js(group)?);
+            let child_groups = child_groups_map.get(&group.id).cloned().unwrap_or_default();
+            let entries = entries_map.get(&group.id).cloned().unwrap_or_default();
+            array.push(&self.group_to_js_with(group, child_groups, entries)?);
         }
         Ok(array)
     }
@@ -206,7 +276,10 @@ impl KdbxDatabase {
             .filter(|e| e.group_id == group.id)
             .map(|e| e.id.to_string())
             .collect();
+        self.group_to_js_with(group, child_groups, entries)
+    }
 
+    fn group_to_js_with(&self, group: &Group, child_groups: Vec<String>, entries: Vec<String>) -> Result<JsValue, JsValue> {
         to_js(&JsGroup {
             uuid: group.id.to_string(),
             name: group.name.clone(),
@@ -235,16 +308,17 @@ pub fn is_kdbx_file(data: &Uint8Array) -> bool {
 pub fn get_file_info(data: &Uint8Array) -> Result<JsValue, String> {
     let rust_data = uint8array_to_vec(data);
     let header = crate::core::header::parse_header(&rust_data).map_err(|e| format!("{e:?}"))?;
-    to_js(&serde_json::json!({
-        "version": "4.0",
-        "encryptionAlgorithm": encryption_name(&header.encryption),
-        "kdfAlgorithm": match &header.kdf {
-            KdfAlgorithm::Argon2d { .. } => "Argon2d",
-            KdfAlgorithm::Argon2id { .. } => "Argon2id",
-            KdfAlgorithm::AesKdf { .. } => "AES-KDF",
+    let info = JsFileInfo {
+        version: "4.0".to_string(),
+        encryption_algorithm: encryption_name(&header.encryption).to_string(),
+        kdf_algorithm: match &header.kdf {
+            KdfAlgorithm::Argon2d { .. } => "Argon2d".to_string(),
+            KdfAlgorithm::Argon2id { .. } => "Argon2id".to_string(),
+            KdfAlgorithm::AesKdf { .. } => "AES-KDF".to_string(),
         },
-        "compression": compression_name(&header.compression),
-    })).map_err(|e| format!("{e:?}"))
+        compression: compression_name(&header.compression).to_string(),
+    };
+    to_js(&info).map_err(|e| format!("{e:?}"))
 }
 
 // ── Helpers ──
@@ -260,7 +334,8 @@ fn parse_uuid(s: &str) -> Result<Uuid, JsValue> {
 }
 
 fn to_js<T: serde::Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(value)
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    value.serialize(&serializer)
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {e}")))
 }
 
