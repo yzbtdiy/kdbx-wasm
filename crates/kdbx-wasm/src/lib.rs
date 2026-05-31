@@ -66,23 +66,23 @@ pub struct JsMetadata {
 
 #[wasm_bindgen]
 impl JsMetadata {
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = databaseName)]
     pub fn database_name(&self) -> Option<String> {
         self.database_name.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = databaseDescription)]
     pub fn database_description(&self) -> Option<String> {
         self.database_description.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = defaultUsername)]
     pub fn default_username(&self) -> Option<String> {
         self.default_username.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = maintenanceHistoryDays)]
     pub fn maintenance_history_days(&self) -> u32 {
         self.maintenance_history_days
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = color)]
     pub fn color(&self) -> Option<String> {
         self.color.clone()
     }
@@ -129,19 +129,19 @@ pub struct JsHeaderInfo {
 
 #[wasm_bindgen]
 impl JsHeaderInfo {
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = version)]
     pub fn version(&self) -> String {
         self.version.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = encryptionAlgorithm)]
     pub fn encryption_algorithm(&self) -> String {
         self.encryption_algorithm.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = kdfAlgorithm)]
     pub fn kdf_algorithm(&self) -> String {
         self.kdf_algorithm.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = kdfParams)]
     pub fn kdf_params(&self) -> JsKdfParams {
         JsKdfParams {
             memory: self.kdf_params.memory,
@@ -150,15 +150,15 @@ impl JsHeaderInfo {
             rounds: self.kdf_params.rounds,
         }
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = compression)]
     pub fn compression(&self) -> String {
         self.compression.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = entryCount)]
     pub fn entry_count(&self) -> usize {
         self.entry_count
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = groupCount)]
     pub fn group_count(&self) -> usize {
         self.group_count
     }
@@ -184,7 +184,7 @@ impl KdbxDatabase {
         Ok(KdbxDatabase { session })
     }
 
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = metadata)]
     pub fn metadata(&self) -> JsMetadata {
         let meta = &self.session.metadata;
         JsMetadata {
@@ -196,7 +196,7 @@ impl KdbxDatabase {
         }
     }
 
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = headerInfo)]
     pub fn header_info(&self) -> JsHeaderInfo {
         let h = &self.session.header;
         let (kdf_name, kdf_params) = match &h.kdf {
@@ -333,8 +333,12 @@ impl KdbxDatabase {
         let include_password = include_password.unwrap_or(false);
         let gid = parse_uuid(group_uuid)?;
         let array = Array::new();
-        for entry in self.session.entries.values().filter(|e| e.group_id == gid) {
-            array.push(&self.entry_to_js(entry, include_password)?);
+        if let Some(entry_ids) = self.session.group_entries.get(&gid) {
+            for id in entry_ids {
+                if let Some(entry) = self.session.entries.get(id) {
+                    array.push(&self.entry_to_js(entry, include_password)?);
+                }
+            }
         }
         Ok(array)
     }
@@ -368,7 +372,11 @@ impl KdbxDatabase {
                     .unwrap_or("")
                     .to_lowercase()
                     .contains(&q)
-                || entry.tags.iter().any(|t| t.to_lowercase().contains(&q));
+                || entry.tags.iter().any(|t| t.to_lowercase().contains(&q))
+                || entry
+                    .custom_fields
+                    .values()
+                    .any(|v| v.to_lowercase().contains(&q));
             if matches {
                 array.push(&self.entry_to_js(entry, include_password)?);
             }
@@ -389,7 +397,7 @@ impl KdbxDatabase {
     }
 
     fn entry_to_js(&self, entry: &Entry, include_password: bool) -> Result<JsValue, JsValue> {
-        to_js(&JsEntry {
+        let js_value = to_js(&JsEntry {
             uuid: entry.id.to_string(),
             icon_id: entry.icon_id,
             group_id: entry.group_id.to_string(),
@@ -407,8 +415,18 @@ impl KdbxDatabase {
             accessed_at: entry.accessed_at.to_rfc3339(),
             expires_at: entry.expires_at.map(|e| e.to_rfc3339()),
             tags: entry.tags.clone(),
-            custom_fields: entry.custom_fields.clone(),
-        })
+            custom_fields: HashMap::new(),
+        })?;
+        // Replace Map with plain Object for customFields
+        let obj = js_sys::Object::from(js_value);
+        let custom = js_sys::Object::new();
+        for (k, v) in &entry.custom_fields {
+            js_sys::Reflect::set(&custom, &JsValue::from_str(k), &JsValue::from_str(v))
+                .map_err(|_| JsValue::from_str("Failed to set custom field"))?;
+        }
+        js_sys::Reflect::set(&obj, &JsValue::from_str("customFields"), &custom)
+            .map_err(|_| JsValue::from_str("Failed to set customFields"))?;
+        Ok(obj.into())
     }
 
     fn group_to_js(&self, group: &Group) -> Result<JsValue, JsValue> {
@@ -792,19 +810,19 @@ pub struct JsFileInfo {
 
 #[wasm_bindgen]
 impl JsFileInfo {
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = version)]
     pub fn version(&self) -> String {
         self.version.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = encryptionAlgorithm)]
     pub fn encryption_algorithm(&self) -> String {
         self.encryption_algorithm.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = kdfAlgorithm)]
     pub fn kdf_algorithm(&self) -> String {
         self.kdf_algorithm.clone()
     }
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = compression)]
     pub fn compression(&self) -> String {
         self.compression.clone()
     }

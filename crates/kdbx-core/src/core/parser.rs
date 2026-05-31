@@ -131,10 +131,11 @@ type ParsedData = (
     Metadata,
 );
 
-fn parse_data_stream(data: &[u8]) -> Result<ParsedData, KdbxError> {
+fn parse_data_stream(data: &[u8]) -> Result<(ParsedData, Vec<Vec<u8>>), KdbxError> {
     let mut cursor = Cursor::new(data);
     let mut stream_id: Option<u32> = None;
     let mut stream_key: Option<Vec<u8>> = None;
+    let mut attachments = Vec::new();
 
     loop {
         let field_id = cursor.read_u8()?;
@@ -149,7 +150,25 @@ fn parse_data_stream(data: &[u8]) -> Result<ParsedData, KdbxError> {
                 stream_id = Some(u32::from_le_bytes(field_data[..4].try_into().unwrap()));
             }
             2 => stream_key = Some(field_data),
-            3 => {} // Binary attachments - consume to skip
+            3 => {
+                // Binary attachments: [flag(1)] [len(4)] [data]
+                if field_data.len() >= 5 {
+                    let flag = field_data[0];
+                    let data_len = u32::from_le_bytes(field_data[1..5].try_into().unwrap()) as usize;
+                    let raw_data = &field_data[5..5 + data_len.min(field_data.len() - 5)];
+                    let attachment_data = match flag {
+                        1 => {
+                            let mut out = Vec::new();
+                            GzDecoder::new(raw_data)
+                                .read_to_end(&mut out)
+                                .map_err(|e| KdbxError::CompressionError(e.to_string()))?;
+                            out
+                        }
+                        _ => raw_data.to_vec(),
+                    };
+                    attachments.push(attachment_data);
+                }
+            }
             _ => return Err(KdbxError::InvalidFileFormat),
         }
     }
@@ -161,7 +180,8 @@ fn parse_data_stream(data: &[u8]) -> Result<ParsedData, KdbxError> {
         _ => return Err(KdbxError::InvalidFileFormat),
     };
 
-    xml::parse_xml(xml_data, protected_stream.as_mut())
+    let parsed = xml::parse_xml(xml_data, protected_stream.as_mut())?;
+    Ok((parsed, attachments))
 }
 
 fn generate_data_stream(
@@ -170,6 +190,7 @@ fn generate_data_stream(
     deleted: &[DeletedObject],
     metadata: &Metadata,
     stream_key: &[u8],
+    attachments: &[Vec<u8>],
 ) -> Result<Vec<u8>, KdbxError> {
     let mut stream = xml::ProtectedStream::new(INNER_STREAM_CHACHA20, stream_key)?;
     let xml_data = xml::generate_xml(groups, entries, deleted, metadata, Some(&mut stream))?;
@@ -183,6 +204,15 @@ fn generate_data_stream(
     out.push(2);
     out.extend_from_slice(&(stream_key.len() as u32).to_le_bytes());
     out.extend_from_slice(stream_key);
+    // Binary attachments
+    for attachment in attachments {
+        out.push(3);
+        let payload_len = 1 + 4 + attachment.len();
+        out.extend_from_slice(&(payload_len as u32).to_le_bytes());
+        out.push(0); // flag: uncompressed
+        out.extend_from_slice(&(attachment.len() as u32).to_le_bytes());
+        out.extend_from_slice(attachment);
+    }
     // End field
     out.push(0);
     out.extend_from_slice(&0u32.to_le_bytes());
@@ -328,7 +358,7 @@ pub fn parse_kdbx(
 
     // Decompress + parse
     let decompressed = decompress(&decrypted, kdbx_header.compression)?;
-    let (groups, entries, deleted_objects, metadata) = parse_data_stream(&decompressed)?;
+    let ((groups, entries, deleted_objects, metadata), attachments) = parse_data_stream(&decompressed)?;
 
     let mut session = KdbxSession {
         header: kdbx_header,
@@ -339,6 +369,7 @@ pub fn parse_kdbx(
         root_group: None,
         group_children: HashMap::new(),
         group_entries: HashMap::new(),
+        attachments,
     };
     session.rebuild_indexes();
 
@@ -366,6 +397,7 @@ pub fn generate_kdbx(
         &session.deleted_objects,
         &session.metadata,
         &stream_key,
+        &session.attachments,
     )?;
     let compressed = compress(&data_stream, session.header.compression)?;
     let master_key = combine_master_key(password, key_file)?;
@@ -481,10 +513,10 @@ mod tests {
 
         let metadata = Metadata::default();
         let key = vec![0xAB; 64];
-        let stream = generate_data_stream(&groups, &entries, &[], &metadata, &key).unwrap();
+        let stream = generate_data_stream(&groups, &entries, &[], &metadata, &key, &[]).unwrap();
         assert!(!stream.is_empty());
 
-        let (pg, pe, _, _) = parse_data_stream(&stream).unwrap();
+        let ((pg, pe, _, _), _) = parse_data_stream(&stream).unwrap();
         assert_eq!(pg.len(), 1);
         assert_eq!(pe.len(), 1);
     }
@@ -531,6 +563,7 @@ mod tests {
             root_group: Some(root_id),
             group_children: HashMap::new(),
             group_entries: HashMap::new(),
+            attachments: vec![],
         };
 
         let exported = generate_kdbx(&session, Some("test"), None).unwrap();

@@ -143,6 +143,7 @@ pub struct Entry {
     pub expires_at: Option<DateTime<Utc>>,
     pub tags: Vec<String>,
     pub custom_fields: HashMap<String, String>,
+    pub history: Vec<Entry>,
 }
 
 impl Entry {
@@ -163,6 +164,7 @@ impl Entry {
             expires_at: None,
             tags: Vec::new(),
             custom_fields: HashMap::new(),
+            history: Vec::new(),
         }
     }
 
@@ -247,6 +249,7 @@ pub struct KdbxSession {
     pub root_group: Option<Uuid>,
     pub group_children: HashMap<Uuid, Vec<Uuid>>,
     pub group_entries: HashMap<Uuid, Vec<Uuid>>,
+    pub attachments: Vec<Vec<u8>>,
 }
 
 impl KdbxSession {

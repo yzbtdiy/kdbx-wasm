@@ -33,11 +33,11 @@ export class JsFileInfo {
     /**
      * @returns {string}
      */
-    get encryption_algorithm() {
+    get encryptionAlgorithm() {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.jsfileinfo_encryption_algorithm(this.__wbg_ptr);
+            const ret = wasm.jsfileinfo_encryptionAlgorithm(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -48,11 +48,11 @@ export class JsFileInfo {
     /**
      * @returns {string}
      */
-    get kdf_algorithm() {
+    get kdfAlgorithm() {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.jsfileinfo_kdf_algorithm(this.__wbg_ptr);
+            const ret = wasm.jsfileinfo_kdfAlgorithm(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -113,11 +113,11 @@ export class JsHeaderInfo {
     /**
      * @returns {string}
      */
-    get encryption_algorithm() {
+    get encryptionAlgorithm() {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.jsheaderinfo_encryption_algorithm(this.__wbg_ptr);
+            const ret = wasm.jsheaderinfo_encryptionAlgorithm(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -128,25 +128,25 @@ export class JsHeaderInfo {
     /**
      * @returns {number}
      */
-    get entry_count() {
-        const ret = wasm.jsheaderinfo_entry_count(this.__wbg_ptr);
+    get entryCount() {
+        const ret = wasm.jsheaderinfo_entryCount(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
      * @returns {number}
      */
-    get group_count() {
-        const ret = wasm.jsheaderinfo_group_count(this.__wbg_ptr);
+    get groupCount() {
+        const ret = wasm.jsheaderinfo_groupCount(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
      * @returns {string}
      */
-    get kdf_algorithm() {
+    get kdfAlgorithm() {
         let deferred1_0;
         let deferred1_1;
         try {
-            const ret = wasm.jsheaderinfo_kdf_algorithm(this.__wbg_ptr);
+            const ret = wasm.jsheaderinfo_kdfAlgorithm(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -157,8 +157,8 @@ export class JsHeaderInfo {
     /**
      * @returns {JsKdfParams}
      */
-    get kdf_params() {
-        const ret = wasm.jsheaderinfo_kdf_params(this.__wbg_ptr);
+    get kdfParams() {
+        const ret = wasm.jsheaderinfo_kdfParams(this.__wbg_ptr);
         return JsKdfParams.__wrap(ret);
     }
     /**
@@ -259,8 +259,8 @@ export class JsMetadata {
     /**
      * @returns {string | undefined}
      */
-    get database_description() {
-        const ret = wasm.jsmetadata_database_description(this.__wbg_ptr);
+    get databaseDescription() {
+        const ret = wasm.jsmetadata_databaseDescription(this.__wbg_ptr);
         let v1;
         if (ret[0] !== 0) {
             v1 = getStringFromWasm0(ret[0], ret[1]).slice();
@@ -271,8 +271,8 @@ export class JsMetadata {
     /**
      * @returns {string | undefined}
      */
-    get database_name() {
-        const ret = wasm.jsmetadata_database_name(this.__wbg_ptr);
+    get databaseName() {
+        const ret = wasm.jsmetadata_databaseName(this.__wbg_ptr);
         let v1;
         if (ret[0] !== 0) {
             v1 = getStringFromWasm0(ret[0], ret[1]).slice();
@@ -283,8 +283,8 @@ export class JsMetadata {
     /**
      * @returns {string | undefined}
      */
-    get default_username() {
-        const ret = wasm.jsmetadata_default_username(this.__wbg_ptr);
+    get defaultUsername() {
+        const ret = wasm.jsmetadata_defaultUsername(this.__wbg_ptr);
         let v1;
         if (ret[0] !== 0) {
             v1 = getStringFromWasm0(ret[0], ret[1]).slice();
@@ -295,8 +295,8 @@ export class JsMetadata {
     /**
      * @returns {number}
      */
-    get maintenance_history_days() {
-        const ret = wasm.jsmetadata_maintenance_history_days(this.__wbg_ptr);
+    get maintenanceHistoryDays() {
+        const ret = wasm.jsmetadata_maintenanceHistoryDays(this.__wbg_ptr);
         return ret >>> 0;
     }
 }
@@ -484,8 +484,8 @@ export class KdbxDatabase {
     /**
      * @returns {JsHeaderInfo}
      */
-    get header_info() {
-        const ret = wasm.kdbxdatabase_header_info(this.__wbg_ptr);
+    get headerInfo() {
+        const ret = wasm.kdbxdatabase_headerInfo(this.__wbg_ptr);
         return JsHeaderInfo.__wrap(ret);
     }
     /**
@@ -896,6 +896,10 @@ function __wbg_get_imports() {
         __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
             arg0[arg1] = arg2;
         },
+        __wbg_set_6e30c9374c26414c: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
+            return ret;
+        }, arguments); },
         __wbg_set_dca99999bba88a9a: function(arg0, arg1, arg2) {
             arg0[arg1 >>> 0] = arg2;
         },

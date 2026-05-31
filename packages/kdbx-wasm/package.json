@@ -1,6 +1,6 @@
 {
   "name": "kdbx-wasm",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "KDBX password database parser for JavaScript/WebAssembly - Fast and secure KeePass KDBX 4 file parser",
   "main": "nodejs/kdbx_wasm.js",
   "module": "web/kdbx_wasm.js",

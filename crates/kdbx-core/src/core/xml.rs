@@ -182,6 +182,7 @@ fn parse_entry_node(
             })
             .unwrap_or_default(),
         custom_fields: HashMap::new(),
+        history: Vec::new(),
     };
 
     for string_node in node.children().filter(|n| n.has_tag_name("String")) {
@@ -203,16 +204,13 @@ fn parse_entry_node(
         }
     }
 
-    // Consume history entries to keep protected stream in sync
+    // Parse history entries
     if let Some(history_node) = node.children().find(|n| n.has_tag_name("History")) {
         for history_entry in history_node.children().filter(|n| n.has_tag_name("Entry")) {
-            for string_node in history_entry
-                .children()
-                .filter(|n| n.has_tag_name("String"))
-            {
-                let value_node = string_node.children().find(|n| n.has_tag_name("Value"));
-                let _ = parse_value_node(value_node, protected_stream)?;
-            }
+            // History entries are stored without nested history to avoid recursion
+            let mut hist = parse_entry_node(history_entry, group_id, protected_stream)?;
+            hist.history.clear(); // prevent nested history
+            entry.history.push(hist);
         }
     }
 
@@ -306,6 +304,13 @@ pub fn generate_xml(
             "<DefaultUserName>{}</DefaultUserName>",
             escape_xml(username)
         ));
+    }
+    xml.push_str(&format!(
+        "<MaintenanceHistoryDays>{}</MaintenanceHistoryDays>",
+        metadata.maintenance_history_days
+    ));
+    if let Some(color) = &metadata.color {
+        xml.push_str(&format!("<Color>{}</Color>", escape_xml(color)));
     }
     xml.push_str("</Meta>");
 
@@ -428,6 +433,15 @@ fn write_entry_xml(
         entry.accessed_at,
         entry.expires_at,
     );
+
+    if !entry.history.is_empty() {
+        xml.push_str("<History>");
+        for hist in &entry.history {
+            write_entry_xml(xml, hist, protected_stream)?;
+        }
+        xml.push_str("</History>");
+    }
+
     xml.push_str("</Entry>");
     Ok(())
 }
