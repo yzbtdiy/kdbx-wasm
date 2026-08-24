@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 (2026-08-24)
+
+- **Fix**: read and write the inner-header Binary field using the KeePass/KeePassXC
+  standard layout `[flags(1)][data...]` (field length covers everything, no embedded
+  length). 0.3.0 misread the first four attachment bytes as an embedded length and
+  rejected real KeePass/KeePassXC databases containing attachments with
+  "Database file is corrupted"; exports also carried a phantom length that other
+  readers would treat as attachment data. Verified against the KeePassXC
+  reader/writer implementation.
+
 ## 0.3.0 (2026-08-24)
 
 - **Fix**: publish `kdbx_wasm_bg.js` in the npm package — the bundler entry re-exported it, breaking bundler builds

@@ -214,18 +214,16 @@ fn parse_data_stream(data: &[u8]) -> Result<(ParsedData, Vec<Attachment>), KdbxE
             }
             2 => stream_key = Some(field_data),
             3 => {
-                // Binary attachments: [flag(1)] [len(4)] [data]
-                // Flag bit 0 means "protect in memory" only — the data is
-                // stored verbatim, it is never gzip-compressed here.
-                if field_data.len() >= 5 {
+                // Binary attachments, KeePass/KeePassXC layout:
+                // [flags(1)] [data...] — the field length covers everything,
+                // there is no embedded length. Flag bit 0 = "protect in
+                // memory"; the data is stored verbatim, never gzip-compressed.
+                if !field_data.is_empty() {
                     let protected = field_data[0] & 0x01 != 0;
-                    let data_len =
-                        u32::from_le_bytes(field_data[1..5].try_into().unwrap()) as usize;
-                    if data_len > field_data.len() - 5 {
-                        return Err(KdbxError::InvalidFileFormat);
-                    }
-                    let data = field_data[5..5 + data_len].to_vec();
-                    attachments.push(Attachment { protected, data });
+                    attachments.push(Attachment {
+                        protected,
+                        data: field_data[1..].to_vec(),
+                    });
                 }
             }
             _ => return Err(KdbxError::InvalidFileFormat),
@@ -263,13 +261,13 @@ fn generate_data_stream(
     out.push(2);
     out.extend_from_slice(&(stream_key.len() as u32).to_le_bytes());
     out.extend_from_slice(stream_key);
-    // Binary attachments (flag: 1 = protect in memory, data verbatim)
+    // Binary attachments (flag: 1 = protect in memory, data verbatim;
+    // [flags(1)][data...] — same layout KeePass/KeePassXC writes)
     for attachment in attachments {
         out.push(3);
-        let payload_len = 1 + 4 + attachment.data.len();
+        let payload_len = 1 + attachment.data.len();
         out.extend_from_slice(&(payload_len as u32).to_le_bytes());
         out.push(u8::from(attachment.protected));
-        out.extend_from_slice(&(attachment.data.len() as u32).to_le_bytes());
         out.extend_from_slice(&attachment.data);
     }
     // End field
@@ -621,6 +619,75 @@ mod tests {
         let ((pg, pe, _, _), _) = parse_data_stream(&stream).unwrap();
         assert_eq!(pg.len(), 1);
         assert_eq!(pe.len(), 1);
+    }
+
+    /// Build a data stream whose binary inner-header field uses the exact
+    /// byte layout KeePass/KeePassXC writes: [flags(1)][data...].
+    fn build_stream_with_binary(binary_field: &[u8], key: &[u8]) -> Vec<u8> {
+        let mut groups = HashMap::new();
+        let group = Group::new("Root".to_string(), None);
+        groups.insert(group.id, group);
+        let mut stream = xml::ProtectedStream::new(INNER_STREAM_CHACHA20, key).unwrap();
+        let xml_data = xml::generate_xml(&groups, &HashMap::new(), &[], &Metadata::default(), Some(&mut stream)).unwrap();
+
+        let mut out = Vec::new();
+        out.push(1);
+        out.extend_from_slice(&4u32.to_le_bytes());
+        out.extend_from_slice(&INNER_STREAM_CHACHA20.to_le_bytes());
+        out.push(2);
+        out.extend_from_slice(&(key.len() as u32).to_le_bytes());
+        out.extend_from_slice(key);
+        if !binary_field.is_empty() {
+            out.push(3);
+            out.extend_from_slice(&(binary_field.len() as u32).to_le_bytes());
+            out.extend_from_slice(binary_field);
+        }
+        out.push(0);
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(&xml_data);
+        out
+    }
+
+    #[test]
+    fn test_binary_field_kee_pass_layout() {
+        // 0.3.0 misread the first four attachment bytes as an embedded length
+        // and rejected real KeePass/KeePassXC databases containing attachments
+        // with "Database file is corrupted".
+        let key = vec![0xAB; 64];
+
+        // A PNG header as the first four bytes decodes as a huge little-endian
+        // length — the exact 0.3.0 failure mode.
+        let payload = b"\x89PNG\r\n\x1a\nrest of attachment".to_vec();
+        let mut field = vec![0x01u8]; // protect in memory
+        field.extend_from_slice(&payload);
+
+        let stream = build_stream_with_binary(&field, &key);
+        let ((groups, _, _, _), attachments) = parse_data_stream(&stream).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].data, payload);
+        assert!(attachments[0].protected);
+
+        // generate_data_stream must emit the same standard layout
+        let mut groups = HashMap::new();
+        let group = Group::new("Root".to_string(), None);
+        groups.insert(group.id, group);
+        let generated = generate_data_stream(
+            &groups,
+            &HashMap::new(),
+            &[],
+            &Metadata::default(),
+            &key,
+            &[Attachment {
+                protected: true,
+                data: payload.clone(),
+            }],
+        )
+        .unwrap();
+        let (_, attachments) = parse_data_stream(&generated).unwrap();
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].data, payload);
+        assert!(attachments[0].protected);
     }
 
     #[test]

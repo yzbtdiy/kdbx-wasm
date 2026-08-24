@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "kdbx-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aes",
  "argon2",
@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "kdbx-wasm"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "console_error_panic_hook",
