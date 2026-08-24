@@ -1,27 +1,19 @@
-// KDBX password database parser for JavaScript
-// Thin wrapper around the WebAssembly module
+// Node.js ESM entry for kdbx-wasm.
+//
+// Loads the WASM module synchronously from disk on import, so no init call
+// is needed on Node.js. Browsers and bundlers resolve the "default" exports
+// condition to ./kdbx_wasm.js instead, whose fetch-based init they await:
+//
+//   import init, { KdbxDatabase } from 'kdbx-wasm';
+//   await init();
 
-import * as wasm from './kdbx_wasm.js';
+import { readFileSync } from 'node:fs';
+import { initSync } from './kdbx_wasm.js';
 
-// Re-export all functions and classes
-export const KdbxDatabase = wasm.KdbxDatabase;
-export const JsMetadata = wasm.JsMetadata;
-export const JsHeaderInfo = wasm.JsHeaderInfo;
-export const JsKdfParams = wasm.JsKdfParams;
-export const JsFileInfo = wasm.JsFileInfo;
-export const isKdbxFile = wasm.isKdbxFile;
-export const getFileInfo = wasm.getFileInfo;
-export const start = wasm.start;
-export const initSync = wasm.initSync;
+initSync({
+    module: new WebAssembly.Module(
+        readFileSync(new URL('./kdbx_wasm_bg.wasm', import.meta.url))
+    ),
+});
 
-// Re-export default (init function)
-export { wasm as default };
-
-/**
- * Initialize the WASM module with an optional module path.
- * This is a convenience wrapper around the default export.
- * @param {string|URL|Request|WebAssembly.Module} [module_or_path]
- */
-export async function initKdbxWasm(module_or_path) {
-    return wasm.default(module_or_path);
-}
+export * from './kdbx_wasm.js';

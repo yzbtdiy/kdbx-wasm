@@ -1,41 +1,30 @@
 # Test Fixtures
 
-This directory should contain sample KDBX files for integration testing.
+This directory contains sample KDBX files for integration testing.
 
-## Required Files
+## Files
 
 | File | Password | Description |
 |------|----------|-------------|
-| `test.kdbx` | `test` | Standard KDBX 4 database with a few groups and entries |
-| `test_keyfile.kdbx` | `test` + keyfile | Database using password + key file |
-| `test_chacha20.kdbx` | `test` | Database using ChaCha20 + Argon2id |
+| `pass.kdbx` | `redhat` | KDBX 4 database used by the parser round-trip tests |
 
-## Generating Fixtures
+`pass.kdbx` is committed to the repository; the tests in
+`crates/kdbx-core/src/core/parser.rs` load it automatically (no `#[ignore]`).
 
-You can create these files using [KeePass](https://keepass.info/) or [KeePassXC](https://keepassxc.org/).
+> **Note**: only test data belongs here. Never commit a database containing real credentials.
+
+## Generating Additional Fixtures
+
+You can create more files using [KeePass](https://keepass.info/) or [KeePassXC](https://keepassxc.org/).
 
 ### Quick Guide (KeePassXC)
 
 1. Create a new database
 2. Set the password to `test`
 3. Add a few groups (e.g., "Root", "Work", "Personal")
-4. Add a few entries with titles, usernames, passwords, URLs, and tags
+4. Add entries with titles, usernames, passwords, URLs, tags, expiry dates,
+   and attachments (try one with "protect in memory" enabled)
 5. Save as `test.kdbx`
 
-For `test_chacha20.kdbx`:
-1. Database → Database Security → Encryption Settings
-2. Select "ChaCha20" and "Argon2id"
-3. Save
-
-## Running Tests with Fixtures
-
-Once fixtures are in place, remove the `#[ignore]` attribute from:
-- `test_parse_pass_kdbx`
-- `test_roundtrip_kdbx4`
-- `test_hmac_rejects_tampering`
-
-Or run them explicitly:
-
-```bash
-cargo test -- --ignored
-```
+For a ChaCha20 variant: Database → Database Security → Encryption Settings →
+select "ChaCha20" and "Argon2id", then save as `test_chacha20.kdbx`.

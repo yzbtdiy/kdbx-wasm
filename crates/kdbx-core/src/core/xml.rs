@@ -9,6 +9,10 @@ use uuid::Uuid;
 
 // ── Protected Stream ──
 
+/// Maximum allowed group nesting depth in the inner XML (guards against
+/// stack exhaustion from hostile deeply-nested documents).
+const MAX_GROUP_DEPTH: usize = 64;
+
 pub enum ProtectedStream {
     ChaCha20(chacha20::ChaCha20),
 }
@@ -77,6 +81,7 @@ pub fn parse_xml(
                     &mut groups,
                     &mut entries,
                     &mut protected_stream,
+                    0,
                 )?;
             } else if child.has_tag_name("DeletedObjects") {
                 deleted_objects.extend(parse_deleted_objects(child));
@@ -108,7 +113,11 @@ fn parse_group_node(
     groups: &mut HashMap<Uuid, Group>,
     entries: &mut HashMap<Uuid, Entry>,
     protected_stream: &mut Option<&mut ProtectedStream>,
+    depth: usize,
 ) -> Result<Uuid, KdbxError> {
+    if depth > MAX_GROUP_DEPTH {
+        return Err(KdbxError::InvalidFileFormat);
+    }
     let now = Utc::now();
     let group_id = child_text(node, "UUID")
         .as_deref()
@@ -137,7 +146,14 @@ fn parse_group_node(
 
     for child in node.children().filter(|n| n.is_element()) {
         if child.has_tag_name("Group") {
-            parse_group_node(child, Some(group_id), groups, entries, protected_stream)?;
+            parse_group_node(
+                child,
+                Some(group_id),
+                groups,
+                entries,
+                protected_stream,
+                depth + 1,
+            )?;
         } else if child.has_tag_name("Entry") {
             let entry = parse_entry_node(child, group_id, protected_stream)?;
             entries.insert(entry.id, entry);
@@ -182,6 +198,7 @@ fn parse_entry_node(
             })
             .unwrap_or_default(),
         custom_fields: HashMap::new(),
+        binary_refs: Vec::new(),
         history: Vec::new(),
     };
 
@@ -195,13 +212,32 @@ fn parse_entry_node(
         match key.as_str() {
             "Title" => entry.title = value,
             "UserName" => entry.username = non_empty(value),
-            "Password" if !value.is_empty() => entry.password = Some(SecString::from_plain(&value)),
+            "Password" => entry.password = Some(SecString::from_plain(&value)),
             "URL" => entry.url = non_empty(value),
             "Notes" => entry.notes = non_empty(value),
             _ => {
                 entry.custom_fields.insert(key, value);
             }
         }
+    }
+
+    for binary_node in node.children().filter(|n| n.has_tag_name("Binary")) {
+        let Some(key) = child_text(binary_node, "Key") else {
+            continue;
+        };
+        let Some(value_node) = binary_node.children().find(|n| n.has_tag_name("Value")) else {
+            continue;
+        };
+        let Some(index) = value_node
+            .attribute("Ref")
+            .and_then(|r| r.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        entry.binary_refs.push(BinaryRef {
+            key,
+            pool_index: index,
+        });
     }
 
     // Parse history entries
@@ -264,8 +300,13 @@ fn parse_value_node(
 }
 
 fn parse_expires(node: Node<'_, '_>, times: Option<Node<'_, '_>>) -> Option<DateTime<Utc>> {
-    let expires = child_text(node, "Expires").is_some_and(|v| v.eq_ignore_ascii_case("true"));
-    if expires {
+    // Canonical location is inside <Times>; fall back to the entry node for
+    // files exported by kdbx-wasm <= 0.2.x, which wrote <Expires> as a sibling.
+    let expires_flag = times
+        .and_then(|t| child_text(t, "Expires"))
+        .or_else(|| child_text(node, "Expires"))
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    if expires_flag {
         time_field(times, "ExpiryTime")
     } else {
         None
@@ -419,6 +460,14 @@ fn write_entry_xml(
         write_string_field(xml, key, value, None);
     }
 
+    for bref in &entry.binary_refs {
+        xml.push_str(&format!(
+            "<Binary><Key>{}</Key><Value Ref=\"{}\" /></Binary>",
+            escape_xml(&bref.key),
+            bref.pool_index
+        ));
+    }
+
     if !entry.tags.is_empty() {
         xml.push_str(&format!(
             "<Tags>{}</Tags>",
@@ -479,7 +528,7 @@ fn write_times_xml(
     let expires_flag = if expires.is_some() { "True" } else { "False" };
     xml.push_str(&format!(
         "<Times><CreationTime>{}</CreationTime><LastModificationTime>{}</LastModificationTime>\
-         <LastAccessTime>{}</LastAccessTime><ExpiryTime>{}</ExpiryTime></Times><Expires>{}</Expires>",
+         <LastAccessTime>{}</LastAccessTime><ExpiryTime>{}</ExpiryTime><Expires>{}</Expires></Times>",
         created.to_rfc3339(), modified.to_rfc3339(), accessed.to_rfc3339(), expiry, expires_flag,
     ));
 }
@@ -629,5 +678,91 @@ mod tests {
             entry.custom_fields.get("Owner"),
             Some(&"team-a".to_string())
         );
+    }
+
+    #[test]
+    fn test_expiry_roundtrip_and_times_placement() {
+        let mut groups = HashMap::new();
+        let group = Group::new("Test".to_string(), None);
+        let group_id = group.id;
+        groups.insert(group.id, group);
+
+        let mut entries = HashMap::new();
+        let mut entry = Entry::new(
+            group_id,
+            "Expiring".to_string(),
+            SecString::from_plain("pw"),
+        );
+        let expiry = "2030-01-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        entry.expires_at = Some(expiry);
+        entries.insert(entry.id, entry);
+
+        let metadata = Metadata::default();
+        let mut stream = ProtectedStream::new(3, &[0x11; 64]).unwrap();
+        let xml = generate_xml(&groups, &entries, &[], &metadata, Some(&mut stream)).unwrap();
+        let xml_str = std::str::from_utf8(&xml).unwrap();
+        // <Expires> must live inside <Times>, not as a sibling of it.
+        assert!(xml_str.contains("<Expires>True</Expires></Times>"));
+        assert!(!xml_str.contains("</Times><Expires>"));
+
+        let mut parse_stream = ProtectedStream::new(3, &[0x11; 64]).unwrap();
+        let (_, parsed, _, _) = parse_xml(&xml, Some(&mut parse_stream)).unwrap();
+        let parsed_entry = parsed.values().next().unwrap();
+        assert_eq!(parsed_entry.expires_at, Some(expiry));
+    }
+
+    #[test]
+    fn test_binary_refs_roundtrip() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<KeePassFile>
+    <Meta />
+    <Root>
+        <Group>
+            <UUID>AAAAAAAAAAAAAAAAAAAAAA==</UUID>
+            <Name>Root</Name>
+            <Entry>
+                <UUID>AQEBAQEBAQEBAQEBAQEBAQ==</UUID>
+                <String><Key>Title</Key><Value>With attachment</Value></String>
+                <Binary><Key>readme.txt</Key><Value Ref="0" /></Binary>
+                <Binary><Key>photo.png</Key><Value Ref="1" /></Binary>
+            </Entry>
+        </Group>
+    </Root>
+</KeePassFile>"#;
+
+        let (_, entries, _, _) = parse_xml(xml, None).unwrap();
+        let entry = entries.values().next().unwrap();
+        assert_eq!(
+            entry.binary_refs,
+            vec![
+                BinaryRef {
+                    key: "readme.txt".into(),
+                    pool_index: 0
+                },
+                BinaryRef {
+                    key: "photo.png".into(),
+                    pool_index: 1
+                }
+            ]
+        );
+
+        let mut groups = HashMap::new();
+        groups.insert(
+            Uuid::nil(),
+            Group {
+                id: Uuid::nil(),
+                name: "Root".into(),
+                parent_id: None,
+                icon_id: 0,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                notes: None,
+            },
+        );
+        let metadata = Metadata::default();
+        let mut stream = ProtectedStream::new(3, &[0x22; 64]).unwrap();
+        let out = generate_xml(&groups, &entries, &[], &metadata, Some(&mut stream)).unwrap();
+        let out_str = std::str::from_utf8(&out).unwrap();
+        assert!(out_str.contains("<Binary><Key>readme.txt</Key><Value Ref=\"0\" /></Binary>"));
     }
 }

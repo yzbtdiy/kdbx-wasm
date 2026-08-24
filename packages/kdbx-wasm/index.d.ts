@@ -272,14 +272,27 @@ export function isKdbxFile(data: Uint8Array): boolean;
 export function getFileInfo(data: Uint8Array): JsFileInfo;
 
 /**
- * Initialize the WASM module
+ * Initialize the WASM module synchronously from raw bytes.
  *
- * This function is automatically called when the module is imported.
- * You only need to call it manually if you want to handle initialization errors.
+ * On Node.js this is done automatically when the package is imported
+ * (see index.js). Browser/bundler users normally use the default
+ * export `init()` instead; `initSync` is only useful there when you
+ * have the raw bytes already (e.g. from your own fetch).
  */
-export function start(): void;
+export function initSync(module: WebAssembly.Module | ArrayBuffer | Uint8Array): void;
 
 /**
- * Initialize the WASM module with an optional module path.
+ * Load and initialize the WASM module asynchronously.
+ *
+ * Required before first use in browsers and bundlers:
+ *
+ *   import init, { KdbxDatabase } from 'kdbx-wasm';
+ *   await init();
+ *
+ * Not needed on Node.js, where the WASM module loads synchronously on import.
+ * The optional argument overrides the WASM binary location
+ * (defaults to the kdbx_wasm_bg.wasm file shipped next to the module).
  */
-export function initKdbxWasm(module_or_path?: string | URL | Request | WebAssembly.Module): Promise<void>;
+export default function init(
+  module_or_path?: string | URL | Request | WebAssembly.Module
+): Promise<unknown>;

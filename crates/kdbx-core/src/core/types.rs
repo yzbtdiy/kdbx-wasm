@@ -124,6 +124,24 @@ pub struct KdbxHeader {
     pub inner_random_stream_key: Option<Vec<u8>>,
 }
 
+// ── Binary Attachment ──
+
+/// An attachment stored in the inner-header binary pool.
+/// `protected` is the KDBX "protect in memory" flag; the data itself is
+/// stored verbatim (the flag does not imply any compression or encryption).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attachment {
+    pub protected: bool,
+    pub data: Vec<u8>,
+}
+
+/// An entry's reference into the binary pool (the XML `<Binary>` element).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BinaryRef {
+    pub key: String,
+    pub pool_index: u32,
+}
+
 // ── Entry ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +161,7 @@ pub struct Entry {
     pub expires_at: Option<DateTime<Utc>>,
     pub tags: Vec<String>,
     pub custom_fields: HashMap<String, String>,
+    pub binary_refs: Vec<BinaryRef>,
     pub history: Vec<Entry>,
 }
 
@@ -164,6 +183,7 @@ impl Entry {
             expires_at: None,
             tags: Vec::new(),
             custom_fields: HashMap::new(),
+            binary_refs: Vec::new(),
             history: Vec::new(),
         }
     }
@@ -249,7 +269,7 @@ pub struct KdbxSession {
     pub root_group: Option<Uuid>,
     pub group_children: HashMap<Uuid, Vec<Uuid>>,
     pub group_entries: HashMap<Uuid, Vec<Uuid>>,
-    pub attachments: Vec<Vec<u8>>,
+    pub attachments: Vec<Attachment>,
 }
 
 impl KdbxSession {
@@ -330,7 +350,9 @@ impl KdbxSession {
         name: String,
         parent_id: Option<Uuid>,
     ) -> Result<Uuid, KdbxError> {
-        if let Some(pid) = parent_id && !self.groups.contains_key(&pid) {
+        if let Some(pid) = parent_id
+            && !self.groups.contains_key(&pid)
+        {
             return Err(KdbxError::GroupNotFound(pid));
         }
         let group = Group::new(name, parent_id);
@@ -353,13 +375,22 @@ impl KdbxSession {
         if !self.groups.contains_key(&id) {
             return Err(KdbxError::GroupNotFound(id));
         }
+        if self.root_group == Some(id) {
+            return Err(KdbxError::ValidationError(
+                "Cannot delete the root group".into(),
+            ));
+        }
         // Prevent deletion if group has children or entries
-        if let Some(children) = self.group_children.get(&id) && !children.is_empty() {
+        if let Some(children) = self.group_children.get(&id)
+            && !children.is_empty()
+        {
             return Err(KdbxError::ValidationError(
                 "Group contains sub-groups".into(),
             ));
         }
-        if let Some(entries) = self.group_entries.get(&id) && !entries.is_empty() {
+        if let Some(entries) = self.group_entries.get(&id)
+            && !entries.is_empty()
+        {
             return Err(KdbxError::ValidationError("Group contains entries".into()));
         }
         let group = self.groups.remove(&id).unwrap();
@@ -394,10 +425,15 @@ pub struct SearchQuery<'a> {
 
 impl<'a> SearchQuery<'a> {
     pub fn matches(&self, entry: &Entry, now: DateTime<Utc>) -> bool {
-        if let Some(gid) = self.group_id && entry.group_id != gid {
+        if let Some(gid) = self.group_id
+            && entry.group_id != gid
+        {
             return false;
         }
-        if self.exclude_expired && let Some(expires) = entry.expires_at && expires <= now {
+        if self.exclude_expired
+            && let Some(expires) = entry.expires_at
+            && expires <= now
+        {
             return false;
         }
         if !self.tags.is_empty() {
@@ -459,10 +495,6 @@ impl<T: Zeroize> std::fmt::Debug for SecVec<T> {
 impl<T: Zeroize> SecVec<T> {
     pub fn new(data: Vec<T>) -> Self {
         Self { data }
-    }
-
-    pub fn into_vec(mut self) -> Vec<T> {
-        std::mem::take(&mut self.data)
     }
 }
 
@@ -553,10 +585,6 @@ impl SecString {
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
-    }
-
-    pub fn into_bytes(mut self) -> Vec<u8> {
-        std::mem::take(&mut self.data)
     }
 }
 

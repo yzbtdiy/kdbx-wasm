@@ -1,38 +1,31 @@
 {
   "name": "kdbx-wasm",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "KDBX password database parser for JavaScript/WebAssembly - Fast and secure KeePass KDBX 4 file parser",
-  "main": "nodejs/kdbx_wasm.js",
-  "module": "web/kdbx_wasm.js",
-  "types": "index.d.ts",
-  "sideEffects": false,
+  "type": "module",
+  "main": "./index.js",
+  "module": "./kdbx_wasm.js",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts",
-      "node": "./nodejs/kdbx_wasm.js",
-      "browser": "./web/kdbx_wasm.js",
-      "import": "./kdbx_wasm.js",
-      "require": "./nodejs/kdbx_wasm.js",
+      "node": "./index.js",
       "default": "./kdbx_wasm.js"
     },
-    "./kdbx_wasm.js": {
-      "node": "./nodejs/kdbx_wasm.js",
-      "browser": "./web/kdbx_wasm.js",
-      "default": "./kdbx_wasm.js"
-    }
+    "./kdbx_wasm.js": "./kdbx_wasm.js",
+    "./kdbx_wasm_bg.wasm": "./kdbx_wasm_bg.wasm",
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "index.d.ts",
     "kdbx_wasm.js",
     "kdbx_wasm_bg.wasm",
-    "web/",
-    "nodejs/",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/smoke.test.js"
   },
   "keywords": [
     "kdbx",
@@ -56,6 +49,6 @@
   },
   "homepage": "https://github.com/yzbtdiy/kdbx-wasm#readme",
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=19.0.0"
   }
 }

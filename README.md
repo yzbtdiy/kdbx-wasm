@@ -24,9 +24,9 @@ A high-performance **KDBX 4** password database parser built with **Rust** and *
 | Groups & Entries | ✅ |
 | Custom Fields | ✅ (plain Object) |
 | Entry History | ✅ (round-trip preserved) |
-| Binary Attachments | ✅ (round-trip preserved) |
+| Binary Attachments | ✅ (round-trip preserved, incl. references) |
 | Tags | ✅ |
-| Password + Key File | ✅ |
+| Password + Key File | ✅ (raw, XML v1/v2, hex) |
 
 > **Note**: KDBX 3.x is **not supported**. Only KDBX 4 files can be opened.
 
@@ -40,13 +40,15 @@ npm install kdbx-wasm
 
 ### Prerequisites for Node.js
 
-Node.js **16+** with ESM support.
+Node.js **19+** (ESM only; uses the global `crypto` module for random number generation).
 
-> **Tip**: If you see a `MODULE_TYPELESS_PACKAGE_JSON` warning, you can safely ignore it. The module works correctly regardless.
+> **Note**: On Node 18, `toBytes()` and `createEntry()` require a `globalThis.crypto` polyfill (e.g. `import { webcrypto } from 'node:crypto'; globalThis.crypto ??= webcrypto;`).
 
 ---
 
 ## Quick Start — Node.js
+
+The WASM module loads synchronously on import — no init call needed.
 
 ```js
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -94,9 +96,12 @@ writeFileSync('exported.kdbx', db.toBytes('new-password'));
 
 ## Quick Start — Browser
 
+In browsers the WASM module loads asynchronously — call the default export's `init()` once before first use:
+
 ```html
 <script type="module">
-  import { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-wasm';
+  import init, { KdbxDatabase, isKdbxFile, getFileInfo } from 'kdbx-wasm';
+  await init();
 
   const input = document.getElementById('fileInput');
   input.addEventListener('change', async (e) => {
@@ -118,7 +123,7 @@ writeFileSync('exported.kdbx', db.toBytes('new-password'));
 </script>
 ```
 
-> **Browser import path**: Use `'kdbx-wasm'` for bundlers (Vite, Webpack, Rollup). The package `exports` field automatically selects the correct WASM target.
+> **How the entry is picked**: the package `exports` field routes `import 'kdbx-wasm'` to a synchronous Node.js loader on Node (no init needed) and to the fetch-based browser/bundler module everywhere else.
 
 ---
 
@@ -381,7 +386,6 @@ interface KdbxEntry {
   password?: string;   // only present when explicitly requested
   url?: string;
   notes?: string;
-  iconId: number;
   createdAt: string;   // RFC 3339
   updatedAt: string;
   accessedAt: string;
@@ -441,9 +445,9 @@ cargo install wasm-bindgen-cli
 ```
 
 This generates:
-- `packages/kdbx-wasm/kdbx_wasm.js` — Bundler target (default)
-- `packages/kdbx-wasm/nodejs/` — Node.js target
-- `packages/kdbx-wasm/web/` — Browser target
+- `packages/kdbx-wasm/kdbx_wasm.js` — single ESM binding (browser/bundler entry, fetch-based `init()`)
+- `packages/kdbx-wasm/kdbx_wasm_bg.wasm` — the WASM binary (one copy, shared by all entries)
+- `packages/kdbx-wasm/index.js` — Node.js ESM entry (loads the WASM synchronously via `initSync` + `fs.readFileSync`; hand-written, not generated)
 
 ---
 

@@ -68,6 +68,11 @@ pub fn parse_header(data: &[u8]) -> Result<KdbxHeader, KdbxError> {
     loop {
         let field_id = cursor.read_u8()?;
         let field_size = cursor.read_u32::<LittleEndian>()? as usize;
+        // Reject lengths that exceed the remaining input before allocating.
+        let remaining = data.len() - cursor.position() as usize;
+        if field_size > remaining {
+            return Err(KdbxError::InvalidFileFormat);
+        }
         let mut field_data = vec![0u8; field_size];
         if field_size > 0 {
             cursor.read_exact(&mut field_data)?;
@@ -80,13 +85,21 @@ pub fn parse_header(data: &[u8]) -> Result<KdbxHeader, KdbxError> {
                 encryption = Some(parse_encryption_uuid(&field_data)?);
             }
             id if id == FieldId::CompressionFlags as u8 => {
-                let flags = u32::from_le_bytes(field_data[..4].try_into().unwrap());
+                let flags = u32::from_le_bytes(
+                    field_data
+                        .try_into()
+                        .map_err(|_| KdbxError::InvalidFileFormat)?,
+                );
                 compression = CompressionAlgorithm::from_u32(flags);
             }
             id if id == FieldId::MasterSeed as u8 => master_seed = Some(field_data),
             id if id == FieldId::TransformSeed as u8 => transform_seed = Some(field_data),
             id if id == FieldId::TransformRounds as u8 => {
-                transform_rounds = Some(u64::from_le_bytes(field_data[..8].try_into().unwrap()));
+                transform_rounds = Some(u64::from_le_bytes(
+                    field_data
+                        .try_into()
+                        .map_err(|_| KdbxError::InvalidFileFormat)?,
+                ));
             }
             id if id == FieldId::EncryptionIv as u8 => encryption_iv = Some(field_data),
             id if id == FieldId::StreamStartBytes as u8 => stream_start_bytes = Some(field_data),
@@ -121,7 +134,6 @@ fn parse_encryption_uuid(uuid: &[u8]) -> Result<EncryptionAlgorithm, KdbxError> 
     } else if uuid == CHACHA20_CIPHER_UUID {
         Ok(EncryptionAlgorithm::ChaCha20)
     } else {
-        tracing::error!("Unsupported encryption UUID: {:02x?}", uuid);
         Err(KdbxError::UnsupportedEncryptionAlgorithm)
     }
 }
@@ -143,11 +155,19 @@ fn parse_kdf_parameters(data: &[u8]) -> Result<KdfAlgorithm, KdbxError> {
             break;
         }
         let key_len = cursor.read_u32::<LittleEndian>()? as usize;
+        let remaining = data.len() - cursor.position() as usize;
+        if key_len > remaining {
+            return Err(KdbxError::InvalidFileFormat);
+        }
         let mut key = vec![0u8; key_len];
         cursor.read_exact(&mut key)?;
         let key_str = String::from_utf8_lossy(&key);
 
         let value_len = cursor.read_u32::<LittleEndian>()? as usize;
+        let remaining = data.len() - cursor.position() as usize;
+        if value_len > remaining {
+            return Err(KdbxError::InvalidFileFormat);
+        }
         let mut value = vec![0u8; value_len];
         cursor.read_exact(&mut value)?;
 
@@ -157,14 +177,34 @@ fn parse_kdf_parameters(data: &[u8]) -> Result<KdfAlgorithm, KdbxError> {
                 arr.copy_from_slice(&value);
                 kdf_uuid = Some(arr);
             }
-            "M" | "Memory" => memory = Some(u64::from_le_bytes(value[..8].try_into().unwrap())),
+            "M" | "Memory" => {
+                let v: [u8; 8] = value
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| KdbxError::InvalidFileFormat)?;
+                memory = Some(u64::from_le_bytes(v));
+            }
             "I" | "Iterations" => {
-                iterations = Some(u64::from_le_bytes(value[..8].try_into().unwrap()))
+                let v: [u8; 8] = value
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| KdbxError::InvalidFileFormat)?;
+                iterations = Some(u64::from_le_bytes(v));
             }
             "P" | "Parallelism" => {
-                parallelism = Some(u32::from_le_bytes(value[..4].try_into().unwrap()))
+                let v: [u8; 4] = value
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| KdbxError::InvalidFileFormat)?;
+                parallelism = Some(u32::from_le_bytes(v));
             }
-            "R" | "Rounds" => rounds = Some(u64::from_le_bytes(value[..8].try_into().unwrap())),
+            "R" | "Rounds" => {
+                let v: [u8; 8] = value
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| KdbxError::InvalidFileFormat)?;
+                rounds = Some(u64::from_le_bytes(v));
+            }
             "S" => salt = Some(value),
             _ => {}
         }

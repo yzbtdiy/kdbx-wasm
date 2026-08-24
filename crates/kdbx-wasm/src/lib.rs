@@ -239,7 +239,7 @@ impl KdbxDatabase {
             ),
         };
         JsHeaderInfo {
-            version: "4.0".into(),
+            version: format!("{}.{}", h.version.major, h.version.minor),
             encryption_algorithm: encryption_name(&h.encryption).into(),
             kdf_algorithm: kdf_name.into(),
             kdf_params,
@@ -252,8 +252,10 @@ impl KdbxDatabase {
     #[wasm_bindgen(js_name = getEntries)]
     pub fn get_entries(&self, include_password: Option<bool>) -> Result<Array, JsValue> {
         let include_password = include_password.unwrap_or(false);
+        let mut sorted: Vec<&Entry> = self.session.entries.values().collect();
+        sorted.sort_by(|a, b| a.title.cmp(&b.title).then(a.id.cmp(&b.id)));
         let array = Array::new();
-        for entry in self.session.entries.values() {
+        for entry in sorted {
             array.push(&self.entry_to_js(entry, include_password)?);
         }
         Ok(array)
@@ -297,7 +299,9 @@ impl KdbxDatabase {
                 .push(e.id.to_string());
         }
 
-        for group in self.session.groups.values() {
+        let mut sorted: Vec<&Group> = self.session.groups.values().collect();
+        sorted.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
+        for group in sorted {
             let child_groups = child_groups_map.get(&group.id).cloned().unwrap_or_default();
             let entries = entries_map.get(&group.id).cloned().unwrap_or_default();
             array.push(&self.group_to_js_with(group, child_groups, entries)?);
@@ -315,7 +319,6 @@ impl KdbxDatabase {
             .ok_or_else(|| JsValue::from_str("Group not found"))?;
         self.group_to_js(group)
     }
-
     #[wasm_bindgen(getter, js_name = rootGroupUuid)]
     pub fn root_group_uuid(&self) -> String {
         self.session
@@ -350,34 +353,14 @@ impl KdbxDatabase {
         include_password: Option<bool>,
     ) -> Result<Array, JsValue> {
         let include_password = include_password.unwrap_or(false);
-        let q = query.to_lowercase();
+        let search_query = kdbx_core::types::SearchQuery {
+            text: Some(query),
+            ..Default::default()
+        };
+        let now = chrono::Utc::now();
         let array = Array::new();
         for entry in self.session.entries.values() {
-            let matches = entry.title.to_lowercase().contains(&q)
-                || entry
-                    .username
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&q)
-                || entry
-                    .url
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&q)
-                || entry
-                    .notes
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&q)
-                || entry.tags.iter().any(|t| t.to_lowercase().contains(&q))
-                || entry
-                    .custom_fields
-                    .values()
-                    .any(|v| v.to_lowercase().contains(&q));
-            if matches {
+            if search_query.matches(entry, now) {
                 array.push(&self.entry_to_js(entry, include_password)?);
             }
         }
@@ -775,13 +758,15 @@ impl KdbxDatabase {
     #[wasm_bindgen(js_name = getChildGroups)]
     pub fn get_child_groups(&self, group_uuid: &str) -> Result<Array, JsValue> {
         let gid = parse_uuid(group_uuid)?;
-        let array = Array::new();
-        for group in self
+        let mut sorted: Vec<&Group> = self
             .session
             .groups
             .values()
             .filter(|g| g.parent_id == Some(gid))
-        {
+            .collect();
+        sorted.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
+        let array = Array::new();
+        for group in sorted {
             array.push(&self.group_to_js(group)?);
         }
         Ok(array)
@@ -830,10 +815,13 @@ impl JsFileInfo {
 
 #[wasm_bindgen(js_name = getFileInfo)]
 pub fn get_file_info(data: &Uint8Array) -> Result<JsFileInfo, String> {
-    let rust_data = uint8array_to_vec(data);
-    let header = kdbx_core::header::parse_header(&rust_data).map_err(to_js_error)?;
+    // Only the outer header is needed; avoid copying the whole database.
+    let n = data.length().min(64 * 1024) as usize;
+    let mut buf = vec![0u8; n];
+    data.subarray(0, n as u32).copy_to(&mut buf);
+    let header = kdbx_core::header::parse_header(&buf).map_err(to_js_error)?;
     Ok(JsFileInfo {
-        version: "4.0".into(),
+        version: format!("{}.{}", header.version.major, header.version.minor),
         encryption_algorithm: encryption_name(&header.encryption).into(),
         kdf_algorithm: match &header.kdf {
             KdfAlgorithm::Argon2d { .. } => "Argon2d",
@@ -866,7 +854,7 @@ fn to_js_error(e: KdbxError) -> String {
     match e {
         KdbxError::InvalidSignature => "Not a valid KDBX file".into(),
         KdbxError::UnsupportedVersion(maj, min) => {
-            format!("Unsupported KDBX version: {}.{}", maj, min)
+            format!("Unsupported KDBX version: {maj}.{min}")
         }
         KdbxError::InvalidMasterKey | KdbxError::HmacVerificationFailed => {
             "Incorrect password or key file, or the file has been tampered with".into()
@@ -875,7 +863,11 @@ fn to_js_error(e: KdbxError) -> String {
         KdbxError::InvalidFileFormat => "Database file is corrupted".into(),
         KdbxError::EntryNotFound(_) => "Entry not found".into(),
         KdbxError::GroupNotFound(_) => "Group not found".into(),
-        _ => "An unexpected error occurred".into(),
+        KdbxError::CompressionError(detail) => format!("Decompression error: {detail}"),
+        KdbxError::ValidationError(detail) => format!("Invalid database: {detail}"),
+        KdbxError::MissingField(field) => format!("Database file is corrupted: missing {field}"),
+        KdbxError::SerializationError(detail) => format!("Data encoding error: {detail}"),
+        other => format!("An unexpected error occurred: {other}"),
     }
 }
 
